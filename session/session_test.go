@@ -789,3 +789,42 @@ func TestSearchMetadataOnlySessionFindsMessage(t *testing.T) {
 		t.Fatal("search should not force a full in-memory load")
 	}
 }
+
+func TestManagerEvictsIdleLoadedSessions(t *testing.T) {
+	dir := t.TempDir()
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	mgr.evictMax = 1
+	mgr.evictTTL = 0
+
+	first := mgr.New()
+	first.AddMessage("user", "keep-on-disk")
+	if err := first.Save(); err != nil {
+		t.Fatalf("Save first: %v", err)
+	}
+	if !first.messagesLoaded {
+		t.Fatal("saved session should still be resident until eviction")
+	}
+
+	second := mgr.New()
+	second.AddMessage("user", "active")
+	if err := second.Save(); err != nil {
+		t.Fatalf("Save second: %v", err)
+	}
+
+	if first.messagesLoaded {
+		t.Fatal("idle persisted session should be unloaded")
+	}
+	if !second.messagesLoaded {
+		t.Fatal("active session should remain resident")
+	}
+	loaded, _ := mgr.ResidentStats()
+	if loaded != 1 {
+		t.Fatalf("resident loaded=%d, want 1", loaded)
+	}
+	if msgs := first.GetMessages(); len(msgs) != 1 || msgs[0].Content != "keep-on-disk" {
+		t.Fatalf("unloaded session did not reload: %+v", msgs)
+	}
+}

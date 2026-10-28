@@ -1540,6 +1540,9 @@ func normalizeConfig(cfg *Config) {
 	if cfg.Delegate.MaxConcurrent <= 0 {
 		cfg.Delegate.MaxConcurrent = def.Delegate.MaxConcurrent
 	}
+	if cfg.Delegate.MaxConcurrent > 32 {
+		cfg.Delegate.MaxConcurrent = 32
+	}
 	if cfg.Delegate.TimeoutSeconds <= 0 {
 		cfg.Delegate.TimeoutSeconds = def.Delegate.TimeoutSeconds
 	}
@@ -1563,6 +1566,9 @@ func normalizeConfig(cfg *Config) {
 	}
 	if cfg.Delegate.MaxChildren <= 0 {
 		cfg.Delegate.MaxChildren = def.Delegate.MaxChildren
+	}
+	if cfg.Delegate.MaxChildren > 16 {
+		cfg.Delegate.MaxChildren = 16
 	}
 	if cfg.Delegate.Child.MaxIterations <= 0 {
 		cfg.Delegate.Child.MaxIterations = def.Delegate.Child.MaxIterations
@@ -1609,11 +1615,17 @@ func normalizeConfig(cfg *Config) {
 	if cfg.Autonomy.Pool.MaxWorkers <= 0 {
 		cfg.Autonomy.Pool.MaxWorkers = def.Autonomy.Pool.MaxWorkers
 	}
+	if cfg.Autonomy.Pool.MaxWorkers > 16 {
+		cfg.Autonomy.Pool.MaxWorkers = 16
+	}
 	if cfg.Autonomy.Pool.QueueBuffer <= 0 {
 		cfg.Autonomy.Pool.QueueBuffer = def.Autonomy.Pool.QueueBuffer
 	}
 	if cfg.Autonomy.Pool.MinWorkers <= 0 {
 		cfg.Autonomy.Pool.MinWorkers = def.Autonomy.Pool.MinWorkers
+	}
+	if cfg.Autonomy.Pool.MinWorkers > 8 {
+		cfg.Autonomy.Pool.MinWorkers = 8
 	}
 	if cfg.Autonomy.Pool.MinWorkers > cfg.Autonomy.Pool.MaxWorkers {
 		cfg.Autonomy.Pool.MinWorkers = cfg.Autonomy.Pool.MaxWorkers

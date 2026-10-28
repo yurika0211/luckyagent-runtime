@@ -1906,3 +1906,24 @@ func TestInitHomeCreatesSkillInstallDirs(t *testing.T) {
 		t.Errorf("default guard hook not written: %v", err)
 	}
 }
+
+func TestNormalizeClampsExtremeConcurrency(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Autonomy.Pool.MaxWorkers = 160
+	cfg.Autonomy.Pool.MinWorkers = 20
+	cfg.Delegate.MaxConcurrent = 1500
+	cfg.Delegate.MaxChildren = 900
+	normalizeConfig(cfg)
+	if cfg.Autonomy.Pool.MaxWorkers != 16 {
+		t.Fatalf("max_workers=%d, want 16", cfg.Autonomy.Pool.MaxWorkers)
+	}
+	if cfg.Autonomy.Pool.MinWorkers != 8 {
+		t.Fatalf("min_workers=%d, want 8", cfg.Autonomy.Pool.MinWorkers)
+	}
+	if cfg.Delegate.MaxConcurrent != 32 {
+		t.Fatalf("max_concurrent=%d, want 32", cfg.Delegate.MaxConcurrent)
+	}
+	if cfg.Delegate.MaxChildren != 16 {
+		t.Fatalf("max_children=%d, want 16", cfg.Delegate.MaxChildren)
+	}
+}

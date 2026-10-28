@@ -98,6 +98,7 @@ type Session struct {
 	// v0.44.0: 懒加载支持
 	messagesLoaded bool // 是否已加载完整消息
 	messageCount   int  // 元数据中的消息数量（未加载时使用）
+	lastAccess     time.Time
 
 	// 分页请求只缓存最近一小段消息，避免为了 history 首屏把整个旧会话
 	// 常驻在内存中。完整 GetMessages 仍会按需加载全部消息。
@@ -249,6 +250,7 @@ func NewSession(id, dir string) *Session {
 		format:            FormatSegmentV1,
 		messagesLoaded:    true,
 		storageBytesValid: true,
+		lastAccess:        now,
 	}
 }
 
@@ -562,6 +564,9 @@ func (s *Session) GetMessagesWithError(maxTurns ...int) ([]provider.Message, err
 		return nil, err
 	}
 
+	s.mu.Lock()
+	s.touchAccessLocked()
+	s.mu.Unlock()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -951,6 +956,11 @@ func (s *Session) saveLocked() error {
 	}
 	s.noteAppendTailLocked(appended, appendedSize, persisted, total, needsRewrite)
 	s.publishIndexLocked(meta, metaPath)
+	if s.manager != nil {
+		s.manager.mu.Lock()
+		s.manager.evictLocked(s.ID)
+		s.manager.mu.Unlock()
+	}
 	return nil
 }
 
@@ -1052,6 +1062,8 @@ type Manager struct {
 	sessions map[string]*Session
 	dir      string
 	index    *sessionIndex
+	evictMax int
+	evictTTL time.Duration
 }
 
 // NewManager 创建会话管理器
@@ -1063,6 +1075,8 @@ func NewManager(dir string) (*Manager, error) {
 	m := &Manager{
 		sessions: make(map[string]*Session),
 		dir:      dir,
+		evictMax: defaultSessionEvictMax,
+		evictTTL: defaultSessionEvictIdle,
 	}
 	if index, err := openSessionIndex(dir); err != nil {
 		fmt.Printf("[session] warning: session index unavailable, scanning files: %v\n", err)
@@ -1433,9 +1447,52 @@ func (s *Session) loadMessagesLocked() error {
 		s.needsFullRewrite = true
 	}
 	s.messagesLoaded = true
+	s.lastAccess = time.Now()
 	s.invalidatePageCacheLocked()
 	s.mu.Unlock()
 	return nil
+}
+
+const (
+	defaultSessionEvictIdle = 2 * time.Minute
+	defaultSessionEvictMax  = 8
+)
+
+// Unload drops a fully loaded transcript when it is already persisted.
+// In-memory-only sessions (never saved, or pending rewrite) stay resident.
+func (s *Session) Unload() bool {
+	if s == nil {
+		return false
+	}
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	return s.unloadLocked()
+}
+
+func (s *Session) unloadLocked() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.messagesLoaded {
+		return false
+	}
+	if s.needsFullRewrite || s.persistedCount != len(s.Messages) {
+		return false
+	}
+	s.Messages = nil
+	s.messagesLoaded = false
+	s.invalidatePageCacheLocked()
+	return true
+}
+
+func (s *Session) touchAccessLocked() {
+	s.lastAccess = time.Now()
+}
+
+func (s *Session) idleSinceLocked(now time.Time) time.Duration {
+	if s.lastAccess.IsZero() {
+		return 0
+	}
+	return now.Sub(s.lastAccess)
 }
 
 func (s *Session) loadLegacyMessages() ([]provider.Message, error) {
@@ -1689,7 +1746,9 @@ func (m *Manager) New() *Session {
 	s.manager = m
 	s.messagesLoaded = true // 新会话消息已在内存
 	s.messageCount = 0
+	s.lastAccess = time.Now()
 	m.sessions[id] = s
+	m.evictLocked(s.ID)
 	return s
 }
 
@@ -1705,8 +1764,13 @@ func (m *Manager) NewWithTitle(title string) *Session {
 // Get 获取会话
 func (m *Manager) Get(id string) (*Session, bool) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	s, ok := m.sessions[id]
+	m.mu.RUnlock()
+	if ok && s != nil {
+		s.mu.Lock()
+		s.touchAccessLocked()
+		s.mu.Unlock()
+	}
 	return s, ok
 }
 
@@ -1717,6 +1781,9 @@ func (m *Manager) Ensure(id string) *Session {
 
 	id = m.nextSessionIDLocked(id)
 	if s, ok := m.sessions[id]; ok {
+		s.mu.Lock()
+		s.touchAccessLocked()
+		s.mu.Unlock()
 		return s
 	}
 
@@ -1724,7 +1791,9 @@ func (m *Manager) Ensure(id string) *Session {
 	s.manager = m
 	s.messagesLoaded = true
 	s.messageCount = 0
+	s.lastAccess = time.Now()
 	m.sessions[id] = s
+	m.evictLocked(s.ID)
 	return s
 }
 
@@ -1957,6 +2026,97 @@ func (m *Manager) Count() int {
 	return len(m.sessions)
 }
 
+// ResidentStats reports how many transcripts are currently materialized.
+func (m *Manager) ResidentStats() (loaded int, bytes int64) {
+	if m == nil {
+		return 0, 0
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, s := range m.sessions {
+		if s == nil {
+			continue
+		}
+		s.mu.RLock()
+		if s.messagesLoaded {
+			loaded++
+			for _, msg := range s.Messages {
+				bytes += int64(len(msg.Content))
+			}
+		}
+		s.mu.RUnlock()
+	}
+	return loaded, bytes
+}
+
+func (m *Manager) evictLocked(keepID string) {
+	if m == nil {
+		return
+	}
+	maxLoaded := m.evictMax
+	if maxLoaded <= 0 {
+		maxLoaded = defaultSessionEvictMax
+	}
+	ttl := m.evictTTL
+	if ttl <= 0 {
+		ttl = defaultSessionEvictIdle
+	}
+	now := time.Now()
+	type candidate struct {
+		id    string
+		idle  time.Duration
+		bytes int
+	}
+	loaded := make([]candidate, 0)
+	for id, s := range m.sessions {
+		if s == nil || id == keepID {
+			continue
+		}
+		s.mu.RLock()
+		ok := s.messagesLoaded && !s.needsFullRewrite && s.persistedCount == len(s.Messages)
+		idle := s.idleSinceLocked(now)
+		n := len(s.Messages)
+		s.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		loaded = append(loaded, candidate{id: id, idle: idle, bytes: n})
+	}
+	if len(loaded) < maxLoaded {
+		return
+	}
+	sort.Slice(loaded, func(i, j int) bool {
+		if loaded[i].idle == loaded[j].idle {
+			return loaded[i].bytes > loaded[j].bytes
+		}
+		return loaded[i].idle > loaded[j].idle
+	})
+	overflow := len(loaded) - maxLoaded + 1
+	for i := 0; i < len(loaded) && overflow > 0; i++ {
+		if loaded[i].idle < ttl && i >= overflow {
+			continue
+		}
+		s := m.sessions[loaded[i].id]
+		if s == nil {
+			continue
+		}
+		if s.tryUnload() {
+			overflow--
+		}
+	}
+}
+
+func (s *Session) tryUnload() bool {
+	if s == nil {
+		return false
+	}
+	if !s.saveMu.TryLock() {
+		return false
+	}
+	defer s.saveMu.Unlock()
+	return s.unloadLocked()
+}
+
 // Dir returns the backing session directory.
 func (m *Manager) Dir() string {
 	if m == nil {
@@ -1985,6 +2145,7 @@ func (m *Manager) Upsert(s *Session) {
 	}
 	s.manager = m
 	m.sessions[s.ID] = s
+	m.evictLocked(s.ID)
 }
 
 func extractJSONCodeFence(md string) string {
