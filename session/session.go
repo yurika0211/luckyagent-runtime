@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1877,27 +1878,42 @@ func sessionContentMatches(s *Session, lowerQuery string) bool {
 	switch format {
 	case FormatSegmentV1:
 		path := filepath.Join(dir, id, messagesJSONLName)
-		return fileContainsFold(path, lowerQuery)
+		return jsonlMessageContainsFold(path, lowerQuery)
 	default:
-		return fileContainsFold(filepath.Join(dir, id+".md"), lowerQuery)
+		matched := false
+		_, _, err := readSessionFile(filepath.Join(dir, id+".md"), func(msg provider.Message) error {
+			if strings.Contains(strings.ToLower(msg.Content), lowerQuery) {
+				matched = true
+				return errSessionSearchMatch
+			}
+			return nil
+		})
+		return matched || errors.Is(err, errSessionSearchMatch)
 	}
 }
 
-func fileContainsFold(path, lowerQuery string) bool {
+var errSessionSearchMatch = errors.New("session search match")
+
+func jsonlMessageContainsFold(path, lowerQuery string) bool {
 	f, err := os.Open(path)
 	if err != nil {
 		return false
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
-	buf := make([]byte, 0, 64*1024)
-	sc.Buffer(buf, 8*1024*1024)
-	for sc.Scan() {
-		if strings.Contains(strings.ToLower(sc.Text()), lowerQuery) {
+	decoder := json.NewDecoder(f)
+	for {
+		var msg provider.Message
+		err := decoder.Decode(&msg)
+		if errors.Is(err, io.EOF) {
+			return false
+		}
+		if err != nil {
+			return false
+		}
+		if strings.Contains(strings.ToLower(msg.Content), lowerQuery) {
 			return true
 		}
 	}
-	return false
 }
 
 func (m *Manager) Search(query string) []SessionInfo {
