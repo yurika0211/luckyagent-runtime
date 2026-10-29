@@ -18,6 +18,11 @@ The `session` package owns durable conversation history. Sessions retain the
 existing metadata sidecars, `segment_v1` JSONL messages, external bodies and
 legacy Markdown migration. No new configuration fields are required.
 
+Loaded transcripts stay resident only while in use. After Save, idle sessions
+are unloaded back to metadata stubs (default: at most 8 fully loaded sessions,
+2-minute idle). Unsaved or rewrite-pending sessions are never dropped.
+`ResidentStats` reports how many transcripts currently occupy the heap.
+
 ## Concurrent operations and deletion
 
 Append, Save, Clear, Roll, restore, migration, blob externalization and deletion

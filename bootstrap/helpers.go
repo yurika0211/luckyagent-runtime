@@ -68,6 +68,7 @@ type RagRuntime struct {
 	Persist       *rag.Persistence
 	StreamIndexer *rag.StreamIndexer
 	EmbedderReg   *embedder.Registry
+	SQLiteError   error
 }
 
 /**
@@ -514,14 +515,12 @@ func InitRAGRuntime(cfg *config.Manager, c *config.Config) (RagRuntime, error) {
 	ragDBPath := cfg.HomeDir() + "/rag/luckyagent.db"
 	ragMgr, err := rag.NewRAGManagerWithSQLite(activeEmb, ragConfig, ragDBPath)
 	if err != nil {
-		logger.Warn("sqlite RAG unavailable; using in-memory fallback", "path", ragDBPath, "error", err)
+		logger.Warn("sqlite RAG unavailable; serving without a loaded index", "path", ragDBPath, "error", err)
 		ragManager = rag.NewRAGManager(activeEmb, ragConfig)
+		// Keep a Persistence handle so Close can still snapshot an empty
+		// in-memory index. Do not Load() an existing JSON dump: that path
+		// materializes the whole corpus on the heap for a long-lived serve.
 		ragPersist = rag.NewPersistence(cfg.HomeDir() + "/rag")
-		if ragPersist.Exists() {
-			if docCount, loadErr := ragPersist.Load(ragManager); loadErr == nil && docCount > 0 {
-				_ = docCount
-			}
-		}
 	} else {
 		ragManager = ragMgr
 	}
@@ -531,6 +530,7 @@ func InitRAGRuntime(cfg *config.Manager, c *config.Config) (RagRuntime, error) {
 		Persist:       ragPersist,
 		StreamIndexer: rag.NewStreamIndexer(ragManager, rag.DefaultStreamConfig()),
 		EmbedderReg:   embedderReg,
+		SQLiteError:   err,
 	}, nil
 }
 

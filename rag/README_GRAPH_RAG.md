@@ -2,6 +2,8 @@
 
 基于 LuckyAgent 记忆系统的激活扩散机制实现的 Graph RAG。
 
+SQLite 索引打不开（含 embedding 维度不匹配）时，serve 使用空的内存索引并要求重建，不再把 JSON dump 整库加载进 RAM。
+
 ## 概述
 
 Graph RAG 在传统向量 RAG 的基础上，增加了知识图谱和激活扩散机制，能够：
