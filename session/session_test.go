@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -787,6 +788,30 @@ func TestSearchMetadataOnlySessionFindsMessage(t *testing.T) {
 	}
 	if again, _ := mgr.Get("search-me"); again.messagesLoaded {
 		t.Fatal("search should not force a full in-memory load")
+	}
+}
+
+func TestSearchLegacyLargeMessageFindsEscapedContent(t *testing.T) {
+	dir := t.TempDir()
+	needle := "unique-zebra-42"
+	data, err := json.Marshal(sessionData{
+		ID: "legacy-large-search", Title: "ordinary title",
+		Messages: []provider.Message{{Role: "user", Content: strings.Repeat("x", 9*1024*1024) + "\\n" + needle}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := "# LuckyAgent Session\n\n```json\n" + string(data) + "\n```\n"
+	if err := os.WriteFile(filepath.Join(dir, "legacy-large-search.md"), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits := mgr.Search(needle)
+	if len(hits) != 1 || hits[0].ID != "legacy-large-search" {
+		t.Fatalf("large legacy message was not found: %+v", hits)
 	}
 }
 
