@@ -33,8 +33,12 @@ type DurableTask struct {
 // DurableResult is the neutral result passed back to the queue owner when a
 // durable slice finishes.
 type DurableResult struct {
-	Output       string
-	Error        error
+	Output string
+	Error  error
+	// Duration is the active execution time for the durable slice. Queue
+	// owners use it to enforce cumulative foreground budgets without charging
+	// time spent waiting between slices.
+	Duration     time.Duration
 	TokensUsed   int
 	Verified     bool
 	Verification string
