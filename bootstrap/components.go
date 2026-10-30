@@ -202,6 +202,7 @@ type Hooks struct {
 	SaveCron          func() error
 	StartHeartbeat    func() error
 	ResumeAutonomy    func(context.Context) error
+	ResumeForeground  func(context.Context) error
 }
 
 func (r *Components) Start(ctx context.Context, hooks Hooks) error {
@@ -259,6 +260,11 @@ func (r *Components) Start(ctx context.Context, hooks Hooks) error {
 				if err := hooks.ResumeAutonomy(ctx); err != nil {
 					logger.Warn("resume queued autonomy tasks failed", "error", err)
 				}
+			}
+		}
+		if hooks.ResumeForeground != nil {
+			if err := hooks.ResumeForeground(ctx); err != nil {
+				logger.Warn("resume foreground tasks failed", "error", err)
 			}
 		}
 	})

@@ -85,6 +85,7 @@ func (e *TurnExecution) Finish(result *turn.DurableResult, canceled bool) error 
 	if result != nil {
 		worker.Output = result.Output
 		worker.Error = result.Error
+		worker.Duration = result.Duration
 		worker.TokensUsed = result.TokensUsed
 		worker.Verified = result.Verified
 		worker.Verification = result.Verification
