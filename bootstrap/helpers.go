@@ -9,6 +9,7 @@ import (
 	"github.com/yurika0211/luckyagent-runtime/embedder"
 	"github.com/yurika0211/luckyagent-runtime/hook"
 	"github.com/yurika0211/luckyagent-runtime/logger"
+	memrt "github.com/yurika0211/luckyagent-runtime/memory"
 	"github.com/yurika0211/luckyagent-runtime/memoryaestus"
 	"github.com/yurika0211/luckyagent-runtime/metrics"
 	"github.com/yurika0211/luckyagent-runtime/middleware"
@@ -1089,6 +1090,13 @@ func ResolveMemoryRuntime(cfg *config.Manager, c *config.Config, injected *memor
 			return memory.Runtime{}, fmt.Errorf("incomplete memory runtime")
 		}
 		return *injected, nil
+	}
+	backend, err := memrt.NormalizeBackend(c.Memory.Backend)
+	if err != nil {
+		return memory.Runtime{}, err
+	}
+	if backend == memrt.BackendOff {
+		return memrt.DisabledRuntime(c.Memory.ShortTermMaxTurns, c.Memory.MidTermMaxSummaries), nil
 	}
 	t := c.Memory.Tidal
 	return memoryaestus.Open(memoryaestus.Options{HomeDir: cfg.HomeDir(), ShortTermMaxTurns: c.Memory.ShortTermMaxTurns,
