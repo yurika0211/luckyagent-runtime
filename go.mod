@@ -10,7 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/stretchr/testify v1.11.1
-	github.com/yurika0211/aestus v0.1.0
+	github.com/yurika0211/aestus v0.1.1-0.20261031163709-5ea8b187b6af
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.43.0
