@@ -815,6 +815,56 @@ func TestSearchLegacyLargeMessageFindsEscapedContent(t *testing.T) {
 	}
 }
 
+func TestSearchJSONLLargeLineFindsNeedle(t *testing.T) {
+	dir := t.TempDir()
+	id := "jsonl-large-search"
+	sessionDir := filepath.Join(dir, id)
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	needle := "unique-jsonl-zebra-42"
+	line, err := json.Marshal(provider.Message{Role: "user", Content: strings.Repeat("y", 9*1024*1024) + needle})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(line) <= 8*1024*1024 {
+		t.Fatalf("jsonl line is only %d bytes", len(line))
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, messagesJSONLName), append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits := mgr.Search(needle)
+	if len(hits) != 1 || hits[0].ID != id {
+		t.Fatalf("large jsonl message was not found: %+v", hits)
+	}
+}
+
+func TestSearchJSONLSkipsCorruptRecordAndContinues(t *testing.T) {
+	dir := t.TempDir()
+	id := "jsonl-skip-bad"
+	sessionDir := filepath.Join(dir, id)
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	needle := "unique-after-bad-record"
+	body := "{not-json}\n" + `{"role":"user","content":"` + needle + `"}` + "\n"
+	if err := os.WriteFile(filepath.Join(sessionDir, messagesJSONLName), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits := mgr.Search(needle)
+	if len(hits) != 1 || hits[0].ID != id {
+		t.Fatalf("search stopped on the corrupt jsonl record: %+v", hits)
+	}
+}
+
 func TestManagerEvictsIdleLoadedSessions(t *testing.T) {
 	dir := t.TempDir()
 	mgr, err := NewManager(dir)

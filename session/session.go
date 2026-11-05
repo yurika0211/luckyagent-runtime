@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1962,18 +1963,20 @@ func jsonlMessageContainsFold(path, lowerQuery string) bool {
 		return false
 	}
 	defer f.Close()
-	decoder := json.NewDecoder(f)
+	// Read one JSON value per line. A streaming decoder stops the whole file
+	// after the first bad value, and bufio.Scanner stops at 8MiB. A bad line
+	// is skipped so a later message can still match.
+	reader := bufio.NewReader(f)
 	for {
-		var msg provider.Message
-		err := decoder.Decode(&msg)
-		if errors.Is(err, io.EOF) {
-			return false
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			var msg provider.Message
+			if json.Unmarshal(bytes.TrimSpace(line), &msg) == nil && strings.Contains(strings.ToLower(msg.Content), lowerQuery) {
+				return true
+			}
 		}
 		if err != nil {
 			return false
-		}
-		if strings.Contains(strings.ToLower(msg.Content), lowerQuery) {
-			return true
 		}
 	}
 }
