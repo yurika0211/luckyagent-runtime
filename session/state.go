@@ -72,7 +72,7 @@ func (s *Session) saveMetadataLocked() error {
 	}
 	meta := sessionMetadata{
 		ID: s.ID, Title: s.Title, AgentRole: s.AgentRole,
-		Recap: s.recap, RecapUpdatedAt: s.recapUpdatedAt,
+		Recap: s.recap, RecapUpdatedAt: s.recapUpdatedAt, Recaps: cloneRecaps(s.recaps),
 		AgentSystemPrompt: s.AgentSystemPrompt, Pinned: s.Pinned, Project: s.Project,
 		MessageCount: s.persistedCount, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		ByteSize: s.storageBytes, Format: format,

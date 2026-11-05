@@ -4,8 +4,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yurika0211/luckyagent-runtime/appservice"
 	"github.com/yurika0211/luckyagent-runtime/provider"
 )
+
+// maxSessionRecaps bounds the ordered preview list. Older entries drop first.
+const maxSessionRecaps = 32
+
+// SessionRecap is one stored preview. The alias keeps metadata in this package.
+type SessionRecap = appservice.SessionRecap
 
 // Recap returns the user-facing preview without loading the transcript.
 func (s *Session) Recap() (string, *time.Time) {
@@ -20,6 +27,66 @@ func cloneRecapTime(t *time.Time) *time.Time {
 	}
 	copy := *t
 	return &copy
+}
+
+func cloneRecaps(in []SessionRecap) []SessionRecap {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]SessionRecap, len(in))
+	copy(out, in)
+	return out
+}
+
+// normalizeRecaps keeps recap / recap_updated_at as the latest entry.
+// A file that only has those two fields becomes a one-item list.
+func normalizeRecaps(latest string, at *time.Time, list []SessionRecap) (string, *time.Time, []SessionRecap) {
+	cleaned := make([]SessionRecap, 0, len(list))
+	for _, item := range list {
+		text := strings.TrimSpace(item.Text)
+		if text == "" || item.UpdatedAt.IsZero() {
+			continue
+		}
+		cleaned = append(cleaned, SessionRecap{Text: text, UpdatedAt: item.UpdatedAt.UTC()})
+	}
+	if len(cleaned) == 0 && strings.TrimSpace(latest) != "" && at != nil && !at.IsZero() {
+		cleaned = append(cleaned, SessionRecap{Text: strings.TrimSpace(latest), UpdatedAt: at.UTC()})
+	}
+	if len(cleaned) > maxSessionRecaps {
+		cleaned = cleaned[len(cleaned)-maxSessionRecaps:]
+	}
+	if len(cleaned) == 0 {
+		return "", nil, nil
+	}
+	last := cleaned[len(cleaned)-1]
+	return last.Text, cloneRecapTime(&last.UpdatedAt), cleaned
+}
+
+// appendRecap adds one preview. The same updated_at is not stored twice.
+func appendRecap(list []SessionRecap, text string, at time.Time) []SessionRecap {
+	text = strings.TrimSpace(text)
+	if text == "" || at.IsZero() {
+		return cloneRecaps(list)
+	}
+	at = at.UTC()
+	out := cloneRecaps(list)
+	for _, item := range out {
+		if item.UpdatedAt.Equal(at) {
+			return out
+		}
+	}
+	out = append(out, SessionRecap{Text: text, UpdatedAt: at})
+	if len(out) > maxSessionRecaps {
+		out = out[len(out)-maxSessionRecaps:]
+	}
+	return out
+}
+
+// Recaps returns the ordered preview list. The last item matches Recap.
+func (s *Session) Recaps() []SessionRecap {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneRecaps(s.recaps)
 }
 
 // RecapSnapshot captures recent evidence and its version atomically. The caller
@@ -75,12 +142,20 @@ func (s *Session) UpdateRecap(text string, sourceUpdatedAt time.Time) (bool, err
 		return false, nil
 	}
 	previous, previousAt := s.recap, s.recapUpdatedAt
-	now := time.Now().UTC()
-	s.recap, s.recapUpdatedAt = text, &now
+	previousList := cloneRecaps(s.recaps)
+	// The list key is the conversation version, so a retried generation of the
+	// same UpdatedAt does not add a second row.
+	next := appendRecap(s.recaps, text, sourceUpdatedAt)
+	if len(next) == len(previousList) {
+		s.mu.Unlock()
+		return false, nil
+	}
+	latest, latestAt, stored := normalizeRecaps(text, &sourceUpdatedAt, next)
+	s.recap, s.recapUpdatedAt, s.recaps = latest, latestAt, stored
 	s.mu.Unlock()
 	if err := s.saveMetadataLocked(); err != nil {
 		s.mu.Lock()
-		s.recap, s.recapUpdatedAt = previous, previousAt
+		s.recap, s.recapUpdatedAt, s.recaps = previous, previousAt, previousList
 		s.mu.Unlock()
 		return false, err
 	}

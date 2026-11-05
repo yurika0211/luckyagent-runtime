@@ -95,6 +95,7 @@ func (idx *sessionIndex) init() error {
 	for _, column := range []struct{ name, ddl string }{
 		{"recap", "TEXT NOT NULL DEFAULT ''"},
 		{"recap_updated_at", "TEXT NOT NULL DEFAULT ''"},
+		{"recaps", "TEXT NOT NULL DEFAULT ''"},
 		{"tail_start", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		if !columns[column.name] {
@@ -120,7 +121,7 @@ func (idx *sessionIndex) List() (map[string]indexedSession, error) {
 	rows, err := idx.db.Query(`
 		SELECT id, title, agent_role, agent_system_prompt, pinned, project, message_count,
 			created_at, updated_at, byte_size, format, shell_context,
-			source_size, source_mtime_ns, tail_offset, tail_start, file_size, recap, recap_updated_at
+			source_size, source_mtime_ns, tail_offset, tail_start, file_size, recap, recap_updated_at, recaps
 		FROM sessions`)
 	if err != nil {
 		return nil, err
@@ -130,16 +131,19 @@ func (idx *sessionIndex) List() (map[string]indexedSession, error) {
 	for rows.Next() {
 		var row indexedSession
 		var pinned int
-		var created, updated, shell, recapUpdated string
+		var created, updated, shell, recapUpdated, recaps string
 		var sourceMTime int64
 		if err := rows.Scan(
 			&row.Meta.ID, &row.Meta.Title, &row.Meta.AgentRole, &row.Meta.AgentSystemPrompt,
 			&pinned, &row.Meta.Project, &row.Meta.MessageCount, &created, &updated,
 			&row.Meta.ByteSize, &row.Meta.Format, &shell,
 			&row.SourceSize, &sourceMTime, &row.TailOffset, &row.TailStart, &row.FileSize,
-			&row.Meta.Recap, &recapUpdated,
+			&row.Meta.Recap, &recapUpdated, &recaps,
 		); err != nil {
 			return nil, err
+		}
+		if recaps != "" {
+			_ = json.Unmarshal([]byte(recaps), &row.Meta.Recaps)
 		}
 		row.Meta.Pinned = pinned != 0
 		row.Meta.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -170,16 +174,25 @@ func (idx *sessionIndex) Upsert(row indexedSession) error {
 	if row.Meta.RecapUpdatedAt != nil {
 		recapUpdated = row.Meta.RecapUpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
+	recapList := row.Meta.Recaps
+	if recapList == nil {
+		recapList = []SessionRecap{}
+	}
+	recaps, marshalErr := json.Marshal(recapList)
+	if marshalErr != nil {
+		return marshalErr
+	}
 	_, err = idx.db.Exec(`
 		INSERT INTO sessions (
 			id, title, agent_role, agent_system_prompt, pinned, project, message_count,
 			created_at, updated_at, byte_size, format, shell_context,
-			source_size, source_mtime_ns, tail_offset, tail_start, file_size, recap, recap_updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			source_size, source_mtime_ns, tail_offset, tail_start, file_size, recap, recap_updated_at, recaps
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			recap = excluded.recap,
 			recap_updated_at = excluded.recap_updated_at,
+			recaps = excluded.recaps,
 			agent_role = excluded.agent_role,
 			agent_system_prompt = excluded.agent_system_prompt,
 			pinned = excluded.pinned,
@@ -200,7 +213,7 @@ func (idx *sessionIndex) Upsert(row indexedSession) error {
 		row.Meta.CreatedAt.UTC().Format(time.RFC3339Nano),
 		row.Meta.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		row.Meta.ByteSize, row.Meta.Format, string(shell),
-		row.SourceSize, row.SourceTime.UnixNano(), row.TailOffset, row.TailStart, row.FileSize, row.Meta.Recap, recapUpdated)
+		row.SourceSize, row.SourceTime.UnixNano(), row.TailOffset, row.TailStart, row.FileSize, row.Meta.Recap, recapUpdated, string(recaps))
 	return err
 }
 

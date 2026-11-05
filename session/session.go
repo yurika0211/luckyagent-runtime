@@ -72,6 +72,7 @@ type Session struct {
 	Title          string
 	recap          string
 	recapUpdatedAt *time.Time
+	recaps         []SessionRecap
 	// AgentRole and AgentSystemPrompt identify a runtime-owned worker or
 	// sub-agent session and survive process restarts with the session metadata.
 	AgentRole         string
@@ -1111,8 +1112,9 @@ type sessionData struct {
 }
 
 type sessionMetadata struct {
-	Recap             string       `json:"recap,omitempty"`
-	RecapUpdatedAt    *time.Time   `json:"recap_updated_at,omitempty"`
+	Recap             string         `json:"recap,omitempty"`
+	RecapUpdatedAt    *time.Time     `json:"recap_updated_at,omitempty"`
+	Recaps            []SessionRecap `json:"recaps,omitempty"`
 	ID                string       `json:"id"`
 	Title             string       `json:"title"`
 	AgentRole         string       `json:"agent_role,omitempty"`
@@ -1133,6 +1135,13 @@ func sessionMetadataPath(dir, id string) string {
 
 // SessionInfo 是会话的摘要信息（用于列表展示）
 type SessionInfo = appservice.SessionInfo
+
+// SessionDetail is the history payload. Recaps is the full ordered list.
+// ListInfo keeps only the latest recap fields.
+type SessionDetail struct {
+	SessionInfo
+	Recaps []SessionRecap `json:"recaps,omitempty"`
+}
 
 // Manager 管理多个会话
 type Manager struct {
@@ -1393,11 +1402,12 @@ func (m *Manager) newSessionStub(meta sessionMetadata, format string) *Session {
 			meta.ByteSize = fileByteSize(filepath.Join(m.dir, meta.ID+".md"))
 		}
 	}
-	return &Session{
+	stub := &Session{
 		ID:                meta.ID,
 		Title:             meta.Title,
 		recap:             meta.Recap,
 		recapUpdatedAt:    meta.RecapUpdatedAt,
+		recaps:            nil,
 		AgentRole:         meta.AgentRole,
 		AgentSystemPrompt: meta.AgentSystemPrompt,
 		Pinned:            meta.Pinned,
@@ -1415,6 +1425,9 @@ func (m *Manager) newSessionStub(meta sessionMetadata, format string) *Session {
 		storageBytes:      meta.ByteSize,
 		storageBytesValid: true,
 	}
+	text, at, list := normalizeRecaps(meta.Recap, meta.RecapUpdatedAt, meta.Recaps)
+	stub.recap, stub.recapUpdatedAt, stub.recaps = text, at, list
+	return stub
 }
 
 func readSessionMetadataLoose(dir, id string) (sessionMetadata, bool) {
@@ -1943,6 +1956,39 @@ func (m *Manager) ListInfo() []SessionInfo {
 	})
 
 	return infos
+}
+
+// Detail returns one session for the history page, including every stored recap.
+func (m *Manager) Detail(id string) (SessionDetail, bool) {
+	m.mu.RLock()
+	s := m.sessions[id]
+	m.mu.RUnlock()
+	if s == nil {
+		return SessionDetail{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	format := s.format
+	if format == "" {
+		format = FormatLegacyMD
+	}
+	return SessionDetail{
+		SessionInfo: SessionInfo{
+			ID:             s.ID,
+			Title:          s.Title,
+			Recap:          s.recap,
+			RecapUpdatedAt: cloneRecapTime(s.recapUpdatedAt),
+			AgentRole:      s.AgentRole,
+			Pinned:         s.Pinned,
+			Project:        s.Project,
+			MessageCount:   s.messageCountLocked(),
+			ByteSize:       s.storageBytes,
+			Format:         format,
+			CreatedAt:      s.CreatedAt,
+			UpdatedAt:      s.UpdatedAt,
+		},
+		Recaps: cloneRecaps(s.recaps),
+	}, true
 }
 
 // Search 搜索包含关键词的会话
