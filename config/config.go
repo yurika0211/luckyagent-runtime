@@ -544,8 +544,11 @@ type MsgGatewayNapCat struct {
 	AllowedChats     []string             `json:"allowed_chats,omitempty"`
 	AllowedUsers     []string             `json:"allowed_users,omitempty"`
 	RemoveAt         bool                 `json:"remove_at,omitempty"`
-	GroupTriggerMode string               `json:"group_trigger_mode,omitempty"`
-	CrossGroupRead   CrossGroupReadConfig `json:"cross_group_read,omitempty"`
+	GroupTriggerMode        string               `json:"group_trigger_mode,omitempty"`
+	CrossGroupRead          CrossGroupReadConfig `json:"cross_group_read,omitempty"`
+	ProgressSummaryWithLLM  bool                 `json:"progress_summary_with_llm,omitempty"`   // 每轮未完成时是否生成一条总结性进度反馈；默认关闭
+	ProgressSummaryPrompt   string               `json:"progress_summary_prompt,omitempty"`     // 进度摘要展示提示词；空则使用默认风格
+	ShowToolDetailsInResult bool                 `json:"show_tool_details_in_result,omitempty"` // 最终回答前是否附上工具结果；默认关闭
 }
 
 // CrossGroupReadConfig controls the opt-in ability to read another NapCat

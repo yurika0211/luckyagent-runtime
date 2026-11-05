@@ -1,11 +1,32 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestNapCatProgressFieldsUnmarshal(t *testing.T) {
+	var cfg Config
+	raw := []byte(`{"msg_gateway":{"napcat":{"progress_summary_with_llm":true,"progress_summary_prompt":"使用简体中文","show_tool_details_in_result":true}}}`)
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.MsgGateway.NapCat
+	if !got.ProgressSummaryWithLLM || got.ProgressSummaryPrompt != "使用简体中文" || !got.ShowToolDetailsInResult {
+		t.Fatalf("napcat=%+v", got)
+	}
+	var omitted Config
+	if err := json.Unmarshal([]byte(`{"msg_gateway":{"napcat":{"listen_addr":":8080"}}}`), &omitted); err != nil {
+		t.Fatal(err)
+	}
+	blank := omitted.MsgGateway.NapCat
+	if blank.ProgressSummaryWithLLM || blank.ProgressSummaryPrompt != "" || blank.ShowToolDetailsInResult {
+		t.Fatalf("omitted fields are not zero: %+v", blank)
+	}
+}
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
