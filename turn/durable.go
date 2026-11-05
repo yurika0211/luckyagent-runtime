@@ -35,6 +35,10 @@ type DurableTask struct {
 type DurableResult struct {
 	Output       string
 	Error        error
+	// Duration is the active execution time for the durable slice. Queue
+	// owners use it to enforce cumulative foreground budgets without charging
+	// time spent waiting between slices.
+	Duration     time.Duration
 	TokensUsed   int
 	Verified     bool
 	Verification string
