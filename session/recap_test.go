@@ -128,6 +128,77 @@ func TestRecapOptionalAndIndexMigration(t *testing.T) {
 	}
 }
 
+func TestUpdateRecapAppendsAndKeepsLatestFields(t *testing.T) {
+	m, s := coldStateSession(t, false)
+	_, _, first, err := s.RecapSnapshot(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.UpdateRecap("first", first); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	s.AddMessage("user", "next turn")
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, second, err := s.RecapSnapshot(10)
+	if err != nil || !second.After(first) {
+		t.Fatal(second, err)
+	}
+	if ok, err := s.UpdateRecap("second", second); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	if ok, err := s.UpdateRecap("second again", second); ok || err != nil {
+		t.Fatal("same updated_at was stored twice", ok, err)
+	}
+	list := s.Recaps()
+	if len(list) != 2 || list[0].Text != "first" || list[1].Text != "second" {
+		t.Fatalf("recaps = %+v", list)
+	}
+	text, at := s.Recap()
+	if text != "second" || at == nil || !at.Equal(second) {
+		t.Fatalf("latest = %q %v want %v", text, at, second)
+	}
+	listed := m.ListInfo()[0]
+	if listed.Recap != "second" || len(listed.Recaps) != 0 {
+		t.Fatalf("list leaked the full recap list: %+v", listed)
+	}
+	detail, ok := m.Detail(s.ID)
+	if !ok || len(detail.Recaps) != 2 || detail.Recap != "second" {
+		t.Fatalf("detail = %+v ok=%v", detail, ok)
+	}
+
+	raw, err := os.ReadFile(sessionMetadataPath(m.dir, s.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	delete(stored, "recaps")
+	legacy, err := json.Marshal(stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sessionMetadataPath(m.dir, s.ID), legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewManager(m.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.index.Close()
+	cold, ok := reopened.Get(s.ID)
+	if !ok {
+		t.Fatal("missing after old meta")
+	}
+	loaded := cold.Recaps()
+	if len(loaded) != 1 || loaded[0].Text != "second" {
+		t.Fatalf("old meta loaded as %+v", loaded)
+	}
+}
+
 func TestRecapSnapshotPreservesUserOutsideToolTail(t *testing.T) {
 	s := NewSession("long-turn", t.TempDir())
 	s.AddMessage("user", "修复代码")

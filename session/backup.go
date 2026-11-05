@@ -38,6 +38,7 @@ type sessionBackup struct {
 	Title             string             `json:"title"`
 	Recap             string             `json:"recap,omitempty"`
 	RecapUpdatedAt    *time.Time         `json:"recap_updated_at,omitempty"`
+	Recaps            []SessionRecap     `json:"recaps,omitempty"`
 	AgentRole         string             `json:"agent_role,omitempty"`
 	AgentSystemPrompt string             `json:"agent_system_prompt,omitempty"`
 	Messages          []provider.Message `json:"messages"`
@@ -79,6 +80,7 @@ func (s *Session) CreateBackup(trigger string) (*BackupInfo, error) {
 		Title:             s.Title,
 		Recap:             s.recap,
 		RecapUpdatedAt:    cloneRecapTime(s.recapUpdatedAt),
+		Recaps:            cloneRecaps(s.recaps),
 		AgentRole:         s.AgentRole,
 		AgentSystemPrompt: s.AgentSystemPrompt,
 		Messages:          append([]provider.Message(nil), s.Messages...),
@@ -203,7 +205,8 @@ func (s *Session) RestoreBackup(backupID string) (*BackupInfo, error) {
 
 	s.mu.Lock()
 	s.Title = backup.Title
-	s.recap, s.recapUpdatedAt = backup.Recap, cloneRecapTime(backup.RecapUpdatedAt)
+	text, at, list := normalizeRecaps(backup.Recap, backup.RecapUpdatedAt, backup.Recaps)
+	s.recap, s.recapUpdatedAt, s.recaps = text, at, list
 	s.AgentRole = backup.AgentRole
 	s.AgentSystemPrompt = backup.AgentSystemPrompt
 	s.Messages = append([]provider.Message(nil), backup.Messages...)

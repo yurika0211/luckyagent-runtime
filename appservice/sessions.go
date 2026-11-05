@@ -9,11 +9,19 @@ import (
 	"time"
 )
 
+// SessionRecap is one generated preview. updated_at is the conversation
+// version it describes, not the wall clock of the write.
+type SessionRecap struct {
+	Text      string    `json:"text"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type SessionInfo struct {
-	ID             string     `json:"id"`
-	Title          string     `json:"title"`
-	Recap          string     `json:"recap,omitempty"`
-	RecapUpdatedAt *time.Time `json:"recap_updated_at,omitempty"`
+	ID             string         `json:"id"`
+	Title          string         `json:"title"`
+	Recap          string         `json:"recap,omitempty"`
+	RecapUpdatedAt *time.Time     `json:"recap_updated_at,omitempty"`
+	Recaps         []SessionRecap `json:"recaps,omitempty"`
 	AgentRole      string     `json:"agent_role,omitempty"`
 	Pinned         bool       `json:"pinned,omitempty"`
 	Project        string     `json:"project,omitempty"`
