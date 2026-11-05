@@ -634,7 +634,9 @@ func (s *Session) GetMessagesPage(limit, offset int) ([]provider.Message, int, b
 	}
 	if s.format == FormatSegmentV1 {
 		index := s.pageIndex
-		expected := s.messageCount
+		// Disk expectation is the persisted prefix. An unsaved tail is in
+		// memory only and must not turn a complete jsonl into a 500.
+		expected := persistedExpectation(s.persistedCount, s.messageCount)
 		tailOffset, tailStart, tailSize := s.tailOffset, s.tailStart, s.tailSize
 		s.mu.RUnlock()
 		s.loadMu.Lock()
@@ -833,6 +835,19 @@ func (s *Session) MessageCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.messageCountLocked()
+}
+
+// persistedExpectation is the jsonl line count history may require.
+// persistedCount is 0 only before the first successful save. After that it
+// stays at the durable prefix even while messageCount includes an unsaved tail.
+func persistedExpectation(persistedCount, messageCount int) int {
+	if persistedCount > 0 {
+		if messageCount > 0 && persistedCount > messageCount {
+			return messageCount
+		}
+		return persistedCount
+	}
+	return messageCount
 }
 
 func (s *Session) messageCountLocked() int {
@@ -1429,7 +1444,9 @@ func (s *Session) loadMessagesLocked() error {
 		return nil
 	}
 	format := s.format
-	expected := s.messageCount
+	// Same split as GetMessagesPage: persistedCount is the durable prefix.
+	// messageCount includes an unsaved tail once the transcript is resident.
+	expected := persistedExpectation(s.persistedCount, s.messageCount)
 	s.mu.RUnlock()
 
 	var messages []provider.Message
