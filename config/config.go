@@ -581,6 +581,10 @@ type MsgGatewayFeishu struct {
 
 // MemoryConfig 记忆系统配置
 type MemoryConfig struct {
+	// Backend selects the durable memory implementation.
+	// "aestus" (default, also empty) uses the Aestus SDK on disk.
+	// "off" keeps an in-process stub: no disk, no Aestus.
+	Backend             string            `json:"backend,omitempty"`
 	ShortTermMaxTurns   int               `json:"short_term_max_turns,omitempty"`  // 短期记忆最大轮数（默认 10）
 	MidTermExpireDays   int               `json:"midterm_expire_days,omitempty"`   // 中期记忆过期天数（默认 90）
 	MidTermMaxSummaries int               `json:"midterm_max_summaries,omitempty"` // 中期记忆最大摘要数（默认 100）
@@ -923,6 +927,7 @@ func DefaultConfig() *Config {
 		},
 		StreamMode: "native",
 		Memory: MemoryConfig{
+			Backend:             "aestus",
 			ShortTermMaxTurns:   10,
 			MidTermExpireDays:   365,
 			MidTermMaxSummaries: 100,
@@ -1323,6 +1328,9 @@ func normalizeConfig(cfg *Config) {
 	}
 	if cfg.StreamMode == "" {
 		cfg.StreamMode = def.StreamMode
+	}
+	if cfg.Memory.Backend == "" {
+		cfg.Memory.Backend = def.Memory.Backend
 	}
 	if cfg.Memory.ShortTermMaxTurns <= 0 {
 		cfg.Memory.ShortTermMaxTurns = def.Memory.ShortTermMaxTurns
