@@ -7,6 +7,7 @@ type Mode = sandbox.Mode
 
 const ModeDev = sandbox.ModeDev
 const ModeIso = sandbox.ModeIso
+const ModeWorkspaceWrite = sandbox.ModeWorkspaceWrite
 
 var NewManager = sandbox.NewManager
 var Prepare = sandbox.Prepare
