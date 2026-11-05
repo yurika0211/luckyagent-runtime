@@ -1993,6 +1993,7 @@ func cloneConfig(in *Config) *Config {
 		v := *in.Agent.Foreground.MaxRetries
 		cp.Agent.Foreground.MaxRetries = &v
 	}
+	cp.Agent.Foreground.ResumeSources = append([]string(nil), in.Agent.Foreground.ResumeSources...)
 	if in.Autonomy.Recovery.MaxRetries != nil {
 		v := *in.Autonomy.Recovery.MaxRetries
 		cp.Autonomy.Recovery.MaxRetries = &v
@@ -2313,6 +2314,8 @@ func (m *Manager) Set(key, value string) error {
 		case "agent.foreground.max_total_seconds":
 			m.config.Agent.Foreground.MaxTotalSeconds = n
 		}
+	case "agent.foreground.resume_sources":
+		m.config.Agent.Foreground.ResumeSources = splitCSV(value)
 	case "agent.max_iterations":
 		var n int
 		fmt.Sscanf(value, "%d", &n)

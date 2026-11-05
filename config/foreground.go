@@ -7,6 +7,10 @@ type ForegroundConfig struct {
 	MaxSlices       int   `json:"max_slices,omitempty"`
 	MaxTotalSeconds int   `json:"max_total_seconds,omitempty"`
 	MaxRetries      *int  `json:"max_retries,omitempty"`
+	// ResumeSources lists messaging sources whose unfinished foreground queues
+	// may be resumed by the host during startup. An empty list keeps startup
+	// recovery disabled, so interactive sessions remain an explicit user action.
+	ResumeSources []string `json:"resume_sources,omitempty"`
 }
 
 func DefaultForegroundConfig() ForegroundConfig {

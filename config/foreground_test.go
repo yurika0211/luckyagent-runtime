@@ -12,7 +12,7 @@ func TestForegroundConfigRoundTripAndIsolation(t *testing.T) {
 	if d.Enabled == nil || !*d.Enabled || d.MaxSlices != 48 || d.MaxTotalSeconds != 3600 || d.MaxRetries == nil || *d.MaxRetries != 3 {
 		t.Fatalf("defaults=%+v", d)
 	}
-	for k, v := range map[string]string{"agent.foreground.enabled": "false", "agent.foreground.max_retries": "0", "agent.foreground.max_slices": "16", "agent.foreground.max_total_seconds": "900"} {
+	for k, v := range map[string]string{"agent.foreground.enabled": "false", "agent.foreground.max_retries": "0", "agent.foreground.max_slices": "16", "agent.foreground.max_total_seconds": "900", "agent.foreground.resume_sources": "telegram, api, telegram"} {
 		if err := m.Set(k, v); err != nil {
 			t.Fatal(err)
 		}
@@ -33,12 +33,16 @@ func TestForegroundConfigRoundTripAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	d = reloaded.Get().Agent.Foreground
-	if *d.Enabled || *d.MaxRetries != 0 || d.MaxSlices != 16 || d.MaxTotalSeconds != 900 {
+	if *d.Enabled || *d.MaxRetries != 0 || d.MaxSlices != 16 || d.MaxTotalSeconds != 900 || len(d.ResumeSources) != 3 || d.ResumeSources[0] != "telegram" || d.ResumeSources[1] != "api" {
 		t.Fatalf("round-trip=%+v", d)
 	}
 	*d.Enabled = true
 	*d.MaxRetries = 99
+	d.ResumeSources[0] = "changed"
 	if *reloaded.Get().Agent.Foreground.Enabled || *reloaded.Get().Agent.Foreground.MaxRetries != 0 {
 		t.Fatal("snapshot pointers alias live configuration")
+	}
+	if reloaded.Get().Agent.Foreground.ResumeSources[0] != "telegram" {
+		t.Fatal("snapshot slices alias live configuration")
 	}
 }
