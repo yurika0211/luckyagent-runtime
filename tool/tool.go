@@ -252,7 +252,6 @@ type ApprovalRequiredError = toolkit.ApprovalRequiredError
 type AutonomyStartFunc = toolkit.AutonomyStartFunc
 type AutonomyToolService = toolkit.AutonomyToolService
 type BuiltinToolService = toolkit.BuiltinToolService
-type CodexToolService = toolkit.CodexToolService
 type ComputerManager = toolkit.ComputerManager
 type ComputerUseConfig = toolkit.ComputerUseConfig
 type ComputerUseToolService = toolkit.ComputerUseToolService
@@ -281,7 +280,6 @@ type EphemeralCredentialToolService = toolkit.EphemeralCredentialToolService
 
 var ExtractDelegateWorkspace = toolkit.ExtractDelegateWorkspace
 
-type GrokToolService = toolkit.GrokToolService
 type HeartbeatToolService = toolkit.HeartbeatToolService
 
 var ImageAnalyzeTool = toolkit.ImageAnalyzeTool
@@ -300,13 +298,11 @@ type NapCatGroupReader = toolkit.NapCatGroupReader
 var NapCatReadGroupTool = toolkit.NapCatReadGroupTool
 var NewAutonomyToolService = toolkit.NewAutonomyToolService
 var NewBuiltinToolService = toolkit.NewBuiltinToolService
-var NewCodexToolService = toolkit.NewCodexToolService
 var NewComputerUseToolService = toolkit.NewComputerUseToolService
 var NewCronToolService = toolkit.NewCronToolService
 var NewDelegateManager = toolkit.NewDelegateManager
 var NewEphemeralCredentialTerminalToolService = application.NewEphemeralCredentialTerminalToolService
 var NewEphemeralCredentialToolService = application.NewEphemeralCredentialToolService
-var NewGrokToolService = toolkit.NewGrokToolService
 var NewHeartbeatToolService = toolkit.NewHeartbeatToolService
 var NewMemoryToolService = toolkit.NewMemoryToolService
 var NewPriorityTaskQueue = toolkit.NewPriorityTaskQueue

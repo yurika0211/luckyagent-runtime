@@ -43,12 +43,6 @@ type Config struct {
 	// OpenCLI 内容抽取配置
 	OpenCLI OpenCLIConfig `json:"opencli,omitempty"`
 
-	// Codex App Server coding runtime configuration.
-	Codex CodexConfig `json:"codex,omitempty"`
-
-	// Grok Build agent runtime configuration.
-	Grok GrokConfig `json:"grok,omitempty"`
-
 	MCP mcpclient.Config `json:"mcp,omitempty"`
 
 	// Embedding 配置（供 RAG / 记忆向量化使用）
@@ -538,12 +532,12 @@ type MsgGatewayQQOfficial struct {
 
 // MsgGatewayNapCat NapCat / OneBot v11 反向 WebSocket 配置
 type MsgGatewayNapCat struct {
-	ListenAddr       string               `json:"listen_addr,omitempty"`
-	Path             string               `json:"path,omitempty"`
-	AccessToken      string               `json:"access_token,omitempty"`
-	AllowedChats     []string             `json:"allowed_chats,omitempty"`
-	AllowedUsers     []string             `json:"allowed_users,omitempty"`
-	RemoveAt         bool                 `json:"remove_at,omitempty"`
+	ListenAddr              string               `json:"listen_addr,omitempty"`
+	Path                    string               `json:"path,omitempty"`
+	AccessToken             string               `json:"access_token,omitempty"`
+	AllowedChats            []string             `json:"allowed_chats,omitempty"`
+	AllowedUsers            []string             `json:"allowed_users,omitempty"`
+	RemoveAt                bool                 `json:"remove_at,omitempty"`
 	GroupTriggerMode        string               `json:"group_trigger_mode,omitempty"`
 	CrossGroupRead          CrossGroupReadConfig `json:"cross_group_read,omitempty"`
 	ProgressSummaryWithLLM  bool                 `json:"progress_summary_with_llm,omitempty"`   // 每轮未完成时是否生成一条总结性进度反馈；默认关闭
@@ -756,32 +750,6 @@ type WebSearchConfig struct {
 // OpenCLIConfig is shared with the standalone tool module.
 type OpenCLIConfig = toolopencli.Config
 
-// CodexConfig configures the optional local Codex App Server bridge. The
-// bridge is deliberately disabled by default; enabling it exposes codex.*
-// tools to the agent and starts the configured app-server lazily on demand.
-type CodexConfig struct {
-	Enabled        bool     `json:"enabled,omitempty"`
-	Command        string   `json:"command,omitempty"`
-	Args           []string `json:"args,omitempty"`
-	ApprovalMode   string   `json:"approval_mode,omitempty"` // gateway, auto, deny
-	DefaultSandbox string   `json:"default_sandbox,omitempty"`
-	CWDAllowlist   []string `json:"cwd_allowlist,omitempty"`
-	MaxEvents      int      `json:"max_events,omitempty"`
-}
-
-// GrokConfig configures the optional local Grok agent bridge. The bridge is
-// disabled by default; enabling it exposes grok.* tools and starts
-// `grok agent stdio` lazily on the first session.
-type GrokConfig struct {
-	Enabled      bool     `json:"enabled,omitempty"`
-	Command      string   `json:"command,omitempty"`
-	Args         []string `json:"args,omitempty"`
-	ApprovalMode string   `json:"approval_mode,omitempty"` // gateway, auto, deny
-	Model        string   `json:"model,omitempty"`
-	CWDAllowlist []string `json:"cwd_allowlist,omitempty"`
-	MaxEvents    int      `json:"max_events,omitempty"`
-}
-
 // FallbackEntry 是降级链中的一个节点配置
 type FallbackEntry struct {
 	Provider         string `json:"provider"`
@@ -889,19 +857,6 @@ func DefaultConfig() *Config {
 			TimeoutSeconds:     20,
 			MaxChars:           50000,
 			FallbackToWebFetch: true,
-		},
-		Codex: CodexConfig{
-			Enabled:        false,
-			Command:        "codex",
-			Args:           []string{"app-server"},
-			DefaultSandbox: "workspace-write",
-			MaxEvents:      256,
-		},
-		Grok: GrokConfig{
-			Enabled:   false,
-			Command:   "grok",
-			Args:      []string{"agent", "stdio"},
-			MaxEvents: 256,
 		},
 		Multimodal: MultimodalConfig{
 			Provider:           "openai",
@@ -1968,10 +1923,6 @@ func cloneConfig(in *Config) *Config {
 		}
 	}
 	cp.Fallbacks = append([]FallbackEntry(nil), in.Fallbacks...)
-	cp.Codex.Args = append([]string(nil), in.Codex.Args...)
-	cp.Codex.CWDAllowlist = append([]string(nil), in.Codex.CWDAllowlist...)
-	cp.Grok.Args = append([]string(nil), in.Grok.Args...)
-	cp.Grok.CWDAllowlist = append([]string(nil), in.Grok.CWDAllowlist...)
 	cp.Server.APIKeys = append([]string(nil), in.Server.APIKeys...)
 	cp.Server.CORSOrigins = append([]string(nil), in.Server.CORSOrigins...)
 	cp.Tools.Filesystem.AllowedReadRoots = append([]string(nil), in.Tools.Filesystem.AllowedReadRoots...)
@@ -2252,38 +2203,6 @@ func (m *Manager) Set(key, value string) error {
 		m.config.OpenCLI.MaxChars = n
 	case "opencli.fallback_to_web_fetch":
 		m.config.OpenCLI.FallbackToWebFetch = parseBool(value)
-	case "codex.enabled":
-		m.config.Codex.Enabled = parseBool(value)
-	case "codex.command":
-		m.config.Codex.Command = value
-	case "codex.args":
-		m.config.Codex.Args = splitCSV(value)
-	case "codex.approval_mode":
-		m.config.Codex.ApprovalMode = value
-	case "codex.default_sandbox":
-		m.config.Codex.DefaultSandbox = value
-	case "codex.cwd_allowlist":
-		m.config.Codex.CWDAllowlist = splitCSV(value)
-	case "codex.max_events":
-		var n int
-		fmt.Sscanf(value, "%d", &n)
-		m.config.Codex.MaxEvents = n
-	case "grok.enabled":
-		m.config.Grok.Enabled = parseBool(value)
-	case "grok.command":
-		m.config.Grok.Command = value
-	case "grok.args":
-		m.config.Grok.Args = splitCSV(value)
-	case "grok.approval_mode":
-		m.config.Grok.ApprovalMode = value
-	case "grok.model":
-		m.config.Grok.Model = value
-	case "grok.cwd_allowlist":
-		m.config.Grok.CWDAllowlist = splitCSV(value)
-	case "grok.max_events":
-		var n int
-		fmt.Sscanf(value, "%d", &n)
-		m.config.Grok.MaxEvents = n
 	case "stream_mode":
 		m.config.StreamMode = value
 	case "memory.tidal.enabled":
