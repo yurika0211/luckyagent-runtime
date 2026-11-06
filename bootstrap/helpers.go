@@ -20,10 +20,8 @@ import (
 	"github.com/yurika0211/luckyagent-runtime/soul"
 	"github.com/yurika0211/luckyagent-runtime/tool"
 	"github.com/yurika0211/luckyagent-tools/autonomy"
-	codexruntime "github.com/yurika0211/luckyagent-tools/codex"
 	"github.com/yurika0211/luckyagent-tools/computer"
 	"github.com/yurika0211/luckyagent-tools/cron"
-	grokruntime "github.com/yurika0211/luckyagent-tools/grok"
 	"github.com/yurika0211/luckyagent-tools/memory"
 	"github.com/yurika0211/luckyagent-tools/multimodal"
 	"os"
@@ -564,32 +562,6 @@ func InitSupportRuntime(c *config.Config, mem memory.ToolBackend, ragMgr *rag.RA
 		AllowedReadRoots: append([]string(nil), c.Tools.Filesystem.AllowedReadRoots...),
 	}
 	toolServices := tool.NewServices(searchCfg, opencliCfg, "", mediaProcessor, imageGenerator, imageGenDefaults, speechSynthesizer, ttsDefaults, mem, ragMgr, delegateMgr, filesystemPolicy)
-	if c.Codex.Enabled {
-		command := append([]string{c.Codex.Command}, c.Codex.Args...)
-		if strings.TrimSpace(command[0]) == "" {
-			command = []string{"codex", "app-server"}
-		}
-		toolServices.Codex = tool.NewCodexToolService(codexruntime.NewManager(codexruntime.Config{
-			Command:        command,
-			ApprovalMode:   c.Codex.ApprovalMode,
-			DefaultSandbox: c.Codex.DefaultSandbox,
-			CWDAllowlist:   append([]string(nil), c.Codex.CWDAllowlist...),
-			MaxEvents:      c.Codex.MaxEvents,
-		}))
-	}
-	if c.Grok.Enabled {
-		command := append([]string{c.Grok.Command}, c.Grok.Args...)
-		if strings.TrimSpace(command[0]) == "" {
-			command = []string{"grok", "agent", "stdio"}
-		}
-		toolServices.Grok = tool.NewGrokToolService(grokruntime.NewManager(grokruntime.Config{
-			Command:      command,
-			ApprovalMode: c.Grok.ApprovalMode,
-			CWDAllowlist: append([]string(nil), c.Grok.CWDAllowlist...),
-			MaxEvents:    c.Grok.MaxEvents,
-			Model:        c.Grok.Model,
-		}))
-	}
 
 	contextWin := contextx.NewContextWindow(contextx.WindowConfig{
 		MaxTokens:            ContextTokensFor(c),
