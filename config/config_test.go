@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,6 +63,20 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.Agent.SimpleLocalInspection.ToolOnlyIterationLimit != 2 {
 		t.Errorf("expected simple_local_inspection.tool_only_iteration_limit 2, got %d", cfg.Agent.SimpleLocalInspection.ToolOnlyIterationLimit)
+	}
+	if cfg.Agent.RequestProfiles.Chat.MaxIterations != 6 || cfg.Agent.RequestProfiles.Chat.TimeoutSeconds != 45 {
+		t.Errorf("unexpected chat profile: %#v", cfg.Agent.RequestProfiles.Chat)
+	}
+	if cfg.Agent.RequestProfiles.ToolTask.MaxIterations != 10 || cfg.Agent.RequestProfiles.ToolTask.TimeoutSeconds != 90 {
+		t.Errorf("unexpected tool_task profile: %#v", cfg.Agent.RequestProfiles.ToolTask)
+	}
+	if cfg.Agent.RequestProfiles.CodeTask.MaxIterations != 20 || cfg.Agent.RequestProfiles.CodeTask.TimeoutSeconds != 180 {
+		t.Errorf("unexpected code_task profile: %#v", cfg.Agent.RequestProfiles.CodeTask)
+	}
+	if strings.TrimSpace(cfg.Agent.RequestProfiles.Chat.ClosingPrompt) == "" ||
+		cfg.Agent.RequestProfiles.ToolTask.ClosingPrompt != cfg.Agent.RequestProfiles.Chat.ClosingPrompt ||
+		cfg.Agent.RequestProfiles.CodeTask.ClosingPrompt != cfg.Agent.RequestProfiles.Chat.ClosingPrompt {
+		t.Errorf("expected a shared non-empty closing prompt, got %#v", cfg.Agent.RequestProfiles)
 	}
 	if cfg.Delegate.MaxConcurrent != 3 || cfg.Delegate.TimeoutSeconds != 120 || cfg.Delegate.MaxChildren != 3 {
 		t.Errorf("unexpected delegate defaults: %#v", cfg.Delegate)
@@ -374,6 +389,50 @@ func TestManagerSetSimpleLocalInspectionConfig(t *testing.T) {
 	}
 	if cfg.Agent.SimpleLocalInspection.ToolOnlyIterationLimit != 3 {
 		t.Fatalf("expected 3, got %d", cfg.Agent.SimpleLocalInspection.ToolOnlyIterationLimit)
+	}
+}
+
+func TestManagerSetRequestProfileBudget(t *testing.T) {
+	mgr, err := NewManager()
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	if err := mgr.Set("agent.request_profiles.chat.max_iterations", "12"); err != nil {
+		t.Fatalf("Set chat.max_iterations: %v", err)
+	}
+	if err := mgr.Set("agent.request_profiles.tool_task.closing_prompt", "wrap this turn"); err != nil {
+		t.Fatalf("Set tool_task.closing_prompt: %v", err)
+	}
+	cfg := mgr.Get()
+	if cfg.Agent.RequestProfiles.Chat.MaxIterations != 12 {
+		t.Fatalf("expected 12, got %d", cfg.Agent.RequestProfiles.Chat.MaxIterations)
+	}
+	if cfg.Agent.RequestProfiles.ToolTask.ClosingPrompt != "wrap this turn" {
+		t.Fatalf("closing prompt = %q", cfg.Agent.RequestProfiles.ToolTask.ClosingPrompt)
+	}
+}
+
+func TestRequestProfilesPartialJSON(t *testing.T) {
+	var cfg Config
+	raw := []byte(`{"agent":{"request_profiles":{"chat":{"max_iterations":12,"timeout_seconds":70}}}}`)
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agent.RequestProfiles.Chat.MaxIterations != 12 || cfg.Agent.RequestProfiles.Chat.TimeoutSeconds != 70 {
+		t.Fatalf("chat = %#v", cfg.Agent.RequestProfiles.Chat)
+	}
+	if cfg.Agent.RequestProfiles.ToolTask != (RequestProfileBudgetConfig{}) || cfg.Agent.RequestProfiles.CodeTask != (RequestProfileBudgetConfig{}) {
+		t.Fatalf("omitted profiles should stay zero before normalize: %#v", cfg.Agent.RequestProfiles)
+	}
+	normalizeConfig(&cfg)
+	if cfg.Agent.RequestProfiles.Chat.MaxIterations != 12 || cfg.Agent.RequestProfiles.Chat.TimeoutSeconds != 70 {
+		t.Fatalf("normalize changed explicit chat budget: %#v", cfg.Agent.RequestProfiles.Chat)
+	}
+	if strings.TrimSpace(cfg.Agent.RequestProfiles.Chat.ClosingPrompt) == "" {
+		t.Fatal("blank chat closing prompt should be filled")
+	}
+	if cfg.Agent.RequestProfiles.ToolTask.MaxIterations != 10 || cfg.Agent.RequestProfiles.CodeTask.TimeoutSeconds != 180 {
+		t.Fatalf("omitted profiles should take defaults: %#v", cfg.Agent.RequestProfiles)
 	}
 }
 

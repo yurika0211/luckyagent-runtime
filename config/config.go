@@ -354,12 +354,69 @@ type ContextConfig struct {
 	MemoryHygieneMaxFindings   int    `json:"memory_hygiene_max_findings,omitempty"`
 }
 
-// AgentLoopConfig Agent Loop 配置
+// SimpleLocalInspectionConfig tunes the short local-inspection path.
 type SimpleLocalInspectionConfig struct {
 	MaxIterations          int `json:"max_iterations,omitempty"`
 	TimeoutSeconds         int `json:"timeout_seconds,omitempty"`
 	RepeatToolCallLimit    int `json:"repeat_tool_call_limit,omitempty"`
 	ToolOnlyIterationLimit int `json:"tool_only_iteration_limit,omitempty"`
+}
+
+// RequestProfileBudgetConfig is the per-turn budget for one request profile.
+// long_task is not configured here; it keeps the global agent budget and hard cap.
+type RequestProfileBudgetConfig struct {
+	MaxIterations  int    `json:"max_iterations,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+	ClosingPrompt  string `json:"closing_prompt,omitempty"`
+}
+
+// RequestProfilesConfig holds chat, tool_task, and code_task budgets.
+type RequestProfilesConfig struct {
+	Chat     RequestProfileBudgetConfig `json:"chat,omitempty"`
+	ToolTask RequestProfileBudgetConfig `json:"tool_task,omitempty"`
+	CodeTask RequestProfileBudgetConfig `json:"code_task,omitempty"`
+}
+
+func atoiOrZero(value string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(value))
+	return n
+}
+
+func normalizeRequestProfileBudget(got *RequestProfileBudgetConfig, def RequestProfileBudgetConfig) {
+	if got.MaxIterations <= 0 {
+		got.MaxIterations = def.MaxIterations
+	}
+	if got.TimeoutSeconds <= 0 {
+		got.TimeoutSeconds = def.TimeoutSeconds
+	}
+	if strings.TrimSpace(got.ClosingPrompt) == "" {
+		got.ClosingPrompt = def.ClosingPrompt
+	}
+}
+
+func defaultRequestProfileClosingPrompt() string {
+	return "This turn has a limited budget. Stop when the user's request is answered. Near the iteration or time limit, give a conclusion instead of opening new tools. Do not start work that cannot finish in the remaining budget."
+}
+
+func defaultRequestProfiles() RequestProfilesConfig {
+	prompt := defaultRequestProfileClosingPrompt()
+	return RequestProfilesConfig{
+		Chat: RequestProfileBudgetConfig{
+			MaxIterations:  6,
+			TimeoutSeconds: 45,
+			ClosingPrompt:  prompt,
+		},
+		ToolTask: RequestProfileBudgetConfig{
+			MaxIterations:  10,
+			TimeoutSeconds: 90,
+			ClosingPrompt:  prompt,
+		},
+		CodeTask: RequestProfileBudgetConfig{
+			MaxIterations:  20,
+			TimeoutSeconds: 180,
+			ClosingPrompt:  prompt,
+		},
+	}
 }
 
 // AgentLoopConfig Agent Loop 配置
@@ -374,6 +431,7 @@ type AgentLoopConfig struct {
 	DuplicateFetchLimit    int                         `json:"duplicate_fetch_limit,omitempty"`
 	ContextDebug           bool                        `json:"context_debug,omitempty"`
 	SimpleLocalInspection  SimpleLocalInspectionConfig `json:"simple_local_inspection,omitempty"`
+	RequestProfiles        RequestProfilesConfig       `json:"request_profiles,omitempty"`
 }
 
 // DelegateChildConfig controls the Agent Loop used by a foreground delegated
@@ -976,6 +1034,7 @@ func DefaultConfig() *Config {
 				RepeatToolCallLimit:    2,
 				ToolOnlyIterationLimit: 2,
 			},
+			RequestProfiles: defaultRequestProfiles(),
 		},
 		Delegate: DelegateConfig{
 			MaxConcurrent:        3,
@@ -1502,6 +1561,9 @@ func normalizeConfig(cfg *Config) {
 	if cfg.Agent.SimpleLocalInspection.ToolOnlyIterationLimit <= 0 {
 		cfg.Agent.SimpleLocalInspection.ToolOnlyIterationLimit = def.Agent.SimpleLocalInspection.ToolOnlyIterationLimit
 	}
+	normalizeRequestProfileBudget(&cfg.Agent.RequestProfiles.Chat, def.Agent.RequestProfiles.Chat)
+	normalizeRequestProfileBudget(&cfg.Agent.RequestProfiles.ToolTask, def.Agent.RequestProfiles.ToolTask)
+	normalizeRequestProfileBudget(&cfg.Agent.RequestProfiles.CodeTask, def.Agent.RequestProfiles.CodeTask)
 
 	if cfg.Delegate.MaxConcurrent <= 0 {
 		cfg.Delegate.MaxConcurrent = def.Delegate.MaxConcurrent
@@ -2288,6 +2350,24 @@ func (m *Manager) Set(key, value string) error {
 		var n int
 		fmt.Sscanf(value, "%d", &n)
 		m.config.Agent.SimpleLocalInspection.ToolOnlyIterationLimit = n
+	case "agent.request_profiles.chat.max_iterations":
+		m.config.Agent.RequestProfiles.Chat.MaxIterations = atoiOrZero(value)
+	case "agent.request_profiles.chat.timeout_seconds":
+		m.config.Agent.RequestProfiles.Chat.TimeoutSeconds = atoiOrZero(value)
+	case "agent.request_profiles.chat.closing_prompt":
+		m.config.Agent.RequestProfiles.Chat.ClosingPrompt = value
+	case "agent.request_profiles.tool_task.max_iterations":
+		m.config.Agent.RequestProfiles.ToolTask.MaxIterations = atoiOrZero(value)
+	case "agent.request_profiles.tool_task.timeout_seconds":
+		m.config.Agent.RequestProfiles.ToolTask.TimeoutSeconds = atoiOrZero(value)
+	case "agent.request_profiles.tool_task.closing_prompt":
+		m.config.Agent.RequestProfiles.ToolTask.ClosingPrompt = value
+	case "agent.request_profiles.code_task.max_iterations":
+		m.config.Agent.RequestProfiles.CodeTask.MaxIterations = atoiOrZero(value)
+	case "agent.request_profiles.code_task.timeout_seconds":
+		m.config.Agent.RequestProfiles.CodeTask.TimeoutSeconds = atoiOrZero(value)
+	case "agent.request_profiles.code_task.closing_prompt":
+		m.config.Agent.RequestProfiles.CodeTask.ClosingPrompt = value
 	case "delegate.max_concurrent":
 		var n int
 		fmt.Sscanf(value, "%d", &n)
