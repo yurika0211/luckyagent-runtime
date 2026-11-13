@@ -48,10 +48,15 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // assistant tool calls
 
 	// Observation stays in the session record. Provider adapters omit it.
+	// DurationMS on a tool row is the tool wall clock. On an assistant row it
+	// is the provider round until that message was persisted.
 	RunID      string     `json:"run_id,omitempty"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	DurationMS int64      `json:"duration_ms,omitempty"`
-	Status     string     `json:"status,omitempty"` // ok | error | timeout | sandbox | missing | sudo
+	// TTFTMS is the stream delay until the first content or reasoning chunk
+	// of an assistant round. Zero means the round was not streamed.
+	TTFTMS int64  `json:"ttft_ms,omitempty"`
+	Status string `json:"status,omitempty"` // ok | error | timeout | sandbox | missing | sudo
 
 	// BlobHash marks Content as a short preview; the full body lives under the
 	// session blobs/ directory. Provider adapters still send Content only.
