@@ -18,6 +18,21 @@ The `session` package owns durable conversation history. Sessions retain the
 existing metadata sidecars, `segment_v1` JSONL messages, external bodies and
 legacy Markdown migration. No new configuration fields are required.
 
+## Compact summary observation
+
+A compact boundary may store optional summary observation beside the existing
+`summary_source`. The fields are `summary_usage`, `summary_usage_records`,
+`summary_usage_complete`, `summary_calls`, `summary_duration_ms`, and
+`summary_segments`. Old boundaries omit them and still load. `summary_usage`
+reuses `provider.TokenUsage`. A missing object means no visible usage was
+recorded; it is not the same as a stored all-zero usage. `summary_calls`
+counts host Chat callbacks only. Provider retries the host did not see are not
+included and cannot mark usage complete. There is no TTFT field. The host
+writes these values. Runtime stores and returns them on `CompactMetadata`,
+`CompactTrace`, save/reload, backup restore, and `LatestCompactTrace`.
+`CompactTrace` copies the fields explicitly. No configuration key or API route
+is added. The host still owns net-benefit checks and usage collection.
+
 Loaded transcripts stay resident only while in use. After Save, idle sessions
 are unloaded back to metadata stubs (default: at most 8 fully loaded sessions,
 2-minute idle). Unsaved or rewrite-pending sessions are never dropped.

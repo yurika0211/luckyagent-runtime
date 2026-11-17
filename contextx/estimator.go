@@ -4,17 +4,23 @@ import (
 	"hash/fnv"
 	"math"
 	"sync"
-	"unicode/utf8"
 )
 
 // --- Token 估算器 ---
 //
-// 精确的 tiktoken 需要大字典文件，这里用启发式估算：
-// - 英文: ~4 chars/token (GPT-4 系列)
-// - 中文: ~1.5 chars/token (CJK 字符占更多 token)
-// - 代码: ~3 chars/token (代码比自然语言更密集)
+// 精确 tokenizer 需要模型词表，本估算器不引入该依赖，也不承诺相对真实
+// provider usage 的误差范围。Estimate 按 rune 类别累加固定正 cost units，
+// 最后一次 ceil。类别权重不随整段 CJK/code 比例切换，因此在文本前、中、后
+// 插入内容不会把更长字符串估得更低。
 //
-// 估算误差约 ±10%，足够用于上下文窗口管理
+// 权重对齐旧的单类别除数，只作为上下文窗口和请求预算的启发式：
+//   - CJK:  2/3 unit/rune（旧中文约 1.5 chars/token）
+//   - code: 1/3 unit/rune（旧代码约 3 chars/token）
+//   - 其余: 1/4 unit/rune（旧英文约 4 chars/token）
+//
+// 纯英文、纯 CJK、纯 code 与旧公式同量级。混合文本不再在 30% CJK、5% CJK、
+// 15% code 阈值两侧跳变，消费侧必须用新估值重跑 auto 阈值和请求预算。
+// 估值不是 provider token，也不能当成线上省 token 的证据。
 
 // ContentType 表示文本内容类型
 type ContentType int
@@ -59,17 +65,9 @@ func (te *TokenEstimator) Estimate(text string) int {
 	}
 	te.mu.RUnlock()
 
-	contentType := detectContentType(text)
-	charsPerToken := charsPerToken(contentType)
-
-	// 基础估算
-	chars := utf8.RuneCountInString(text)
-	tokens := float64(chars) / charsPerToken
-
-	// 特殊 token 开销：每条消息约 +4 (role 标记等)
-	// 这里只估算文本本身，消息开销在 MessageEstimate 中处理
-
-	estimated := int(math.Ceil(tokens))
+	// 固定正类别权重，取整前可加。不按整段比例切换除数。
+	// 消息 role/name/tool 开销仍在 EstimateMessage 中单独加。
+	estimated := estimateTokensMonotonic(text)
 	te.mu.Lock()
 	// 简单上限，避免无界增长
 	if len(te.cache) > 4096 {
@@ -149,9 +147,42 @@ func (te *TokenEstimator) UsagePercent(messages []Message) float64 {
 	return float64(used) / float64(te.modelContextWindow) * 100
 }
 
+// estimateTokensMonotonic sums fixed positive per-rune costs and ceils once.
+// Empty text is 0. Adding or inserting runes cannot decrease the result,
+// aside from the plateau caused by a single ceil.
+func estimateTokensMonotonic(text string) int {
+	if text == "" {
+		return 0
+	}
+	var units float64
+	for _, r := range text {
+		switch {
+		case isCJK(r):
+			units += tokenCostCJK
+		case isCodeChar(r):
+			units += tokenCostCode
+		default:
+			units += tokenCostOther
+		}
+	}
+	if units <= 0 {
+		return 0
+	}
+	return int(math.Ceil(units))
+}
+
+// Per-rune cost units. 1 unit is 1 estimated token before ceil.
+// Values match the historical single-class chars/token divisors.
+const (
+	tokenCostCJK   = 2.0 / 3.0
+	tokenCostCode  = 1.0 / 3.0
+	tokenCostOther = 1.0 / 4.0
+)
+
 // --- 辅助函数 ---
 
-// detectContentType 检测文本的主要语言/类型
+// detectContentType 检测文本的主要语言/类型。
+// Estimate 不再使用它选择除数；保留给既有内容类型测试和调用方。
 func detectContentType(text string) ContentType {
 	if text == "" {
 		return ContentMixed

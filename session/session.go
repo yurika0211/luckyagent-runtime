@@ -24,29 +24,13 @@ const CompactBoundaryName = "compact_boundary"
 
 // CompactMetadata records a session compaction boundary.
 type CompactMetadata struct {
-	ID                  string              `json:"id"`
-	Trigger             string              `json:"trigger"`
-	Summary             string              `json:"summary"`
-	FromMessage         int                 `json:"from_message,omitempty"`
-	ToMessage           int                 `json:"to_message,omitempty"`
-	ContentHash         string              `json:"content_hash,omitempty"`
-	PolicyVersion       string              `json:"policy_version,omitempty"`
-	CreatedAt           time.Time           `json:"created_at"`
-	PreTokenEstimate    int                 `json:"pre_token_estimate,omitempty"`
-	PostTokenEstimate   int                 `json:"post_token_estimate,omitempty"`
-	SummaryTokens       int                 `json:"summary_tokens,omitempty"`
-	DroppedMessages     int                 `json:"dropped_messages,omitempty"`
-	RetainedMessages    int                 `json:"retained_messages,omitempty"`
-	RestoredAttachments int                 `json:"restored_attachments,omitempty"`
-	SummarySource       string              `json:"summary_source,omitempty"`
-	Attachments         []CompactAttachment `json:"attachments,omitempty"`
-}
-
-type CompactAttachment = compactlib.Attachment
-
-type CompactTrace struct {
-	BoundaryID          string    `json:"boundary_id"`
+	ID                  string    `json:"id"`
 	Trigger             string    `json:"trigger"`
+	Summary             string    `json:"summary"`
+	FromMessage         int       `json:"from_message,omitempty"`
+	ToMessage           int       `json:"to_message,omitempty"`
+	ContentHash         string    `json:"content_hash,omitempty"`
+	PolicyVersion       string    `json:"policy_version,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
 	PreTokenEstimate    int       `json:"pre_token_estimate,omitempty"`
 	PostTokenEstimate   int       `json:"post_token_estimate,omitempty"`
@@ -55,10 +39,45 @@ type CompactTrace struct {
 	RetainedMessages    int       `json:"retained_messages,omitempty"`
 	RestoredAttachments int       `json:"restored_attachments,omitempty"`
 	SummarySource       string    `json:"summary_source,omitempty"`
-	FromMessage         int       `json:"from_message,omitempty"`
-	ToMessage           int       `json:"to_message,omitempty"`
-	ContentHash         string    `json:"content_hash,omitempty"`
-	PolicyVersion       string    `json:"policy_version,omitempty"`
+	// Summary observation is optional and omitted on old sessions.
+	// Nil SummaryUsage means no visible usage was recorded. A non-nil value
+	// with zero tokens is a real provider record, not a stand-in for "missing".
+	// SummaryCalls counts host Chat callbacks only. Provider-internal retries
+	// the host did not observe must not be added, and must not make
+	// SummaryUsageComplete true. There is no TTFT field: this boundary has
+	// no first-token timestamp to copy.
+	SummaryUsage         *provider.TokenUsage `json:"summary_usage,omitempty"`
+	SummaryUsageRecords  int                  `json:"summary_usage_records,omitempty"`
+	SummaryUsageComplete bool                 `json:"summary_usage_complete,omitempty"`
+	SummaryCalls         int                  `json:"summary_calls,omitempty"`
+	SummaryDurationMS    int64                `json:"summary_duration_ms,omitempty"`
+	SummarySegments      int                  `json:"summary_segments,omitempty"`
+	Attachments          []CompactAttachment  `json:"attachments,omitempty"`
+}
+
+type CompactAttachment = compactlib.Attachment
+
+type CompactTrace struct {
+	BoundaryID           string               `json:"boundary_id"`
+	Trigger              string               `json:"trigger"`
+	CreatedAt            time.Time            `json:"created_at"`
+	PreTokenEstimate     int                  `json:"pre_token_estimate,omitempty"`
+	PostTokenEstimate    int                  `json:"post_token_estimate,omitempty"`
+	SummaryTokens        int                  `json:"summary_tokens,omitempty"`
+	DroppedMessages      int                  `json:"dropped_messages,omitempty"`
+	RetainedMessages     int                  `json:"retained_messages,omitempty"`
+	RestoredAttachments  int                  `json:"restored_attachments,omitempty"`
+	SummarySource        string               `json:"summary_source,omitempty"`
+	SummaryUsage         *provider.TokenUsage `json:"summary_usage,omitempty"`
+	SummaryUsageRecords  int                  `json:"summary_usage_records,omitempty"`
+	SummaryUsageComplete bool                 `json:"summary_usage_complete,omitempty"`
+	SummaryCalls         int                  `json:"summary_calls,omitempty"`
+	SummaryDurationMS    int64                `json:"summary_duration_ms,omitempty"`
+	SummarySegments      int                  `json:"summary_segments,omitempty"`
+	FromMessage          int                  `json:"from_message,omitempty"`
+	ToMessage            int                  `json:"to_message,omitempty"`
+	ContentHash          string               `json:"content_hash,omitempty"`
+	PolicyVersion        string               `json:"policy_version,omitempty"`
 }
 
 // Session 代表一次对话会话
@@ -527,22 +546,36 @@ func (s *Session) LatestCompactTrace() (CompactTrace, bool) {
 	return CompactTraceFromMetadata(meta), true
 }
 
+func cloneTokenUsage(usage *provider.TokenUsage) *provider.TokenUsage {
+	if usage == nil {
+		return nil
+	}
+	cloned := *usage
+	return &cloned
+}
+
 func CompactTraceFromMetadata(meta CompactMetadata) CompactTrace {
 	return CompactTrace{
-		BoundaryID:          meta.ID,
-		Trigger:             meta.Trigger,
-		CreatedAt:           meta.CreatedAt,
-		PreTokenEstimate:    meta.PreTokenEstimate,
-		PostTokenEstimate:   meta.PostTokenEstimate,
-		SummaryTokens:       meta.SummaryTokens,
-		DroppedMessages:     meta.DroppedMessages,
-		RetainedMessages:    meta.RetainedMessages,
-		RestoredAttachments: meta.RestoredAttachments,
-		SummarySource:       meta.SummarySource,
-		FromMessage:         meta.FromMessage,
-		ToMessage:           meta.ToMessage,
-		ContentHash:         meta.ContentHash,
-		PolicyVersion:       meta.PolicyVersion,
+		BoundaryID:           meta.ID,
+		Trigger:              meta.Trigger,
+		CreatedAt:            meta.CreatedAt,
+		PreTokenEstimate:     meta.PreTokenEstimate,
+		PostTokenEstimate:    meta.PostTokenEstimate,
+		SummaryTokens:        meta.SummaryTokens,
+		DroppedMessages:      meta.DroppedMessages,
+		RetainedMessages:     meta.RetainedMessages,
+		RestoredAttachments:  meta.RestoredAttachments,
+		SummarySource:        meta.SummarySource,
+		SummaryUsage:         cloneTokenUsage(meta.SummaryUsage),
+		SummaryUsageRecords:  meta.SummaryUsageRecords,
+		SummaryUsageComplete: meta.SummaryUsageComplete,
+		SummaryCalls:         meta.SummaryCalls,
+		SummaryDurationMS:    meta.SummaryDurationMS,
+		SummarySegments:      meta.SummarySegments,
+		FromMessage:          meta.FromMessage,
+		ToMessage:            meta.ToMessage,
+		ContentHash:          meta.ContentHash,
+		PolicyVersion:        meta.PolicyVersion,
 	}
 }
 
