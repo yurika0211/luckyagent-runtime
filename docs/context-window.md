@@ -30,8 +30,15 @@ Critical groups are retained even when they exceed capacity. Callers must check
 request instead of silently dropping pinned instructions.
 
 Token estimates include message text, reasoning, names and tool-call arguments.
-They are estimates, not a provider tokenizer. Tool schemas and image token
-charges need additional accounting by the embedding host.
+They are estimates, not a provider tokenizer. `Estimate` adds a fixed positive
+cost for each rune class (CJK 2/3, code punctuation 1/3, other 1/4) and ceils
+once. It does not switch a divisor from the whole string's CJK or code ratio,
+so wrapping text cannot make a longer string estimate smaller. Pure English,
+CJK, and code stay near the old single-class divisors. Mixed text no longer
+jumps at the old 30% CJK, 5% CJK, and 15% code edges, so auto thresholds and
+request budgets must be rechecked by the host. The estimator does not promise
+a ±10% error against provider usage. Tool schemas and image token charges need
+additional accounting by the embedding host.
 
 Validation covers canonical/legacy config precedence, the legacy setter,
 bootstrap reserve alignment, atomic parallel tool rounds, recent-round
