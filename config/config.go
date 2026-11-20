@@ -167,7 +167,8 @@ type ToolTraceConfig struct {
 }
 
 type FilesystemToolConfig struct {
-	AllowedReadRoots []string `json:"allowed_read_roots,omitempty"`
+	AllowedReadRoots  []string `json:"allowed_read_roots,omitempty"`
+	AllowedWriteRoots []string `json:"allowed_write_roots,omitempty"`
 }
 
 type ComputerUseToolConfig = toolcomputer.ToolConfig
@@ -1113,6 +1114,7 @@ func DefaultConfig() *Config {
 			},
 		},
 		Tools: ToolsConfig{
+			Filesystem: FilesystemToolConfig{AllowedWriteRoots: []string{}},
 			ComputerUse: ComputerUseToolConfig{
 				Enabled:                   false,
 				Mode:                      "observe",
@@ -1988,6 +1990,7 @@ func cloneConfig(in *Config) *Config {
 	cp.Server.APIKeys = append([]string(nil), in.Server.APIKeys...)
 	cp.Server.CORSOrigins = append([]string(nil), in.Server.CORSOrigins...)
 	cp.Tools.Filesystem.AllowedReadRoots = append([]string(nil), in.Tools.Filesystem.AllowedReadRoots...)
+	cp.Tools.Filesystem.AllowedWriteRoots = append([]string(nil), in.Tools.Filesystem.AllowedWriteRoots...)
 	cp.Tools.ComputerUse.AllowedSources = append([]string(nil), in.Tools.ComputerUse.AllowedSources...)
 	cp.Tools.ComputerUse.AllowedWindows = append([]string(nil), in.Tools.ComputerUse.AllowedWindows...)
 	cp.MsgGateway.Telegram.AllowedChats = append([]string(nil), in.MsgGateway.Telegram.AllowedChats...)
@@ -2566,6 +2569,8 @@ func (m *Manager) Set(key, value string) error {
 		m.config.Proactive.KernelMinSamples = n
 	case "tools.filesystem.allowed_read_roots":
 		m.config.Tools.Filesystem.AllowedReadRoots = splitCSV(value)
+	case "tools.filesystem.allowed_write_roots":
+		m.config.Tools.Filesystem.AllowedWriteRoots = splitCSV(value)
 	case "tools.computer_use.enabled":
 		m.config.Tools.ComputerUse.Enabled = parseBool(value)
 	case "tools.computer_use.mode":

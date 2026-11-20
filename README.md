@@ -45,6 +45,9 @@ catalog before explicit activation, including trusted plugin servers. It starts
 no connections and leaves active sessions unchanged; see
 [MCP configuration lifecycle](docs/mcp-lifecycle.md).
 
+[Filesystem policy](docs/filesystem-policy.md) describes independent read and
+write roots, the empty write-root default, and restart requirements.
+
 ## Provider options
 
 [Context windows](docs/context-window.md) describes the canonical input budget,
