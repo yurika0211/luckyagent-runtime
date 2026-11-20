@@ -559,7 +559,8 @@ func InitSupportRuntime(c *config.Config, mem memory.ToolBackend, ragMgr *rag.RA
 		FallbackToWebFetch: c.OpenCLI.FallbackToWebFetch,
 	}
 	filesystemPolicy := tool.FilesystemPolicy{
-		AllowedReadRoots: append([]string(nil), c.Tools.Filesystem.AllowedReadRoots...),
+		AllowedReadRoots:  append([]string(nil), c.Tools.Filesystem.AllowedReadRoots...),
+		AllowedWriteRoots: append([]string(nil), c.Tools.Filesystem.AllowedWriteRoots...),
 	}
 	toolServices := tool.NewServices(searchCfg, opencliCfg, "", mediaProcessor, imageGenerator, imageGenDefaults, speechSynthesizer, ttsDefaults, mem, ragMgr, delegateMgr, filesystemPolicy)
 
