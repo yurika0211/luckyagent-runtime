@@ -16,6 +16,15 @@ remain in the caller; this package has no dependency on the plugin module or Age
 Existing credential resolution, publication, approval and connection cleanup
 contracts remain in place. There are no new configuration fields.
 
+Each server uses a 30-second client deadline when `timeout_seconds` is unset;
+set `mcp.servers.<name>.timeout_seconds` for browser automation or other tools
+that can legitimately run longer. A client deadline is reported separately
+from caller cancellation and protocol/tool errors, and the underlying error is
+wrapped for logs and callers to inspect. MCP adapters require the
+context-aware tool path so the agent request deadline reaches the server;
+legacy context-free registry dispatch is intentionally unavailable for MCP
+tools.
+
 ```bash
 GOWORK=off go test -race ./mcpclient ./bootstrap
 GOWORK=off go vet ./mcpclient ./bootstrap
