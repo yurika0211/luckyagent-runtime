@@ -997,14 +997,18 @@ func DefaultConfig() *Config {
 		},
 		ContextBudget: DefaultContextBudgetConfig(),
 		Context: ContextConfig{
-			MaxHistoryTurns:                  50,
-			MaxContextTokens:                 8000,
-			CompressionThreshold:             0.8,
-			AutoCompactThreshold:             0.82,
-			AutoCompactTargetRatio:           0.50,
-			AutoCompactMinMessages:           24,
-			AutoCompactCooldownTurns:         8,
-			AutoCompactRetainTurns:           6,
+			MaxHistoryTurns:      50,
+			MaxContextTokens:     8000,
+			CompressionThreshold: 0.8,
+			// Compact before a typical request reaches the provider's context
+			// ceiling, then leave a small, useful tail. The previous 0.82/0.50
+			// pair allowed hundreds of thousands of input tokens to accumulate
+			// when tool results were large.
+			AutoCompactThreshold:             0.70,
+			AutoCompactTargetRatio:           0.25,
+			AutoCompactMinMessages:           12,
+			AutoCompactCooldownTurns:         3,
+			AutoCompactRetainTurns:           4,
 			AutoCompactReservedSummaryTokens: 1200,
 			CompactModel:                     "",
 			CompactMaxChunkTokens:            12000,

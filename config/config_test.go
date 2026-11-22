@@ -40,6 +40,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.MaxTokens != 4096 {
 		t.Errorf("expected max_tokens 4096, got %d", cfg.MaxTokens)
 	}
+	if cfg.Context.AutoCompactThreshold != 0.70 || cfg.Context.AutoCompactTargetRatio != 0.25 || cfg.Context.AutoCompactMinMessages != 12 || cfg.Context.AutoCompactCooldownTurns != 3 || cfg.Context.AutoCompactRetainTurns != 4 {
+		t.Errorf("unexpected compact defaults: threshold=%v target=%v min=%d cooldown=%d retain=%d", cfg.Context.AutoCompactThreshold, cfg.Context.AutoCompactTargetRatio, cfg.Context.AutoCompactMinMessages, cfg.Context.AutoCompactCooldownTurns, cfg.Context.AutoCompactRetainTurns)
+	}
 	if cfg.Agent.RepeatToolCallLimit != 3 {
 		t.Errorf("expected repeat_tool_call_limit 3, got %d", cfg.Agent.RepeatToolCallLimit)
 	}
