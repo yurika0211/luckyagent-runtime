@@ -52,10 +52,10 @@ func TestMCPAdapterIntegration(t *testing.T) {
 	if result.Output != "result\n{\"count\":1}\n[MCP returned 1 image(s)]" || len(result.Observations) != 1 || result.Observations[0].Kind != "mcp_image" || result.Metadata["mcp_result"] == nil {
 		t.Fatalf("result lost: %+v", result)
 	}
-	if _, err := r.Call(name, nil); err != nil {
-		t.Fatalf("legacy registry dispatch must call context handler: %v", err)
+	if _, err := r.Call(name, nil); err == nil || !strings.Contains(err.Error(), "requires request context") {
+		t.Fatalf("legacy MCP dispatch should be disabled without a request context: %v", err)
 	}
-	failure, err := r.CallDetailed(MCPToolName("remote", "fail"), nil)
+	failure, err := r.CallDetailedWithContext(MCPToolName("remote", "fail"), nil, ExecutionContext{Context: context.Background()})
 	if err == nil || failure.Metadata["mcp_is_error"] != true {
 		t.Fatalf("isError reported success: %+v %v", failure, err)
 	}

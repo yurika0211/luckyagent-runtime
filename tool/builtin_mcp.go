@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -41,21 +40,11 @@ func (a *MCPAdapter) Sync(catalog []mcpclient.ToolDescriptor) error {
 		}
 		tools = append(tools, &Tool{
 			Name: MCPToolName(d.Ref.Server, d.Ref.Name), Description: d.Description,
-			InputSchema: schema, Category: CatMCP, Source: d.Ref.Server, Permission: PermApprove,
-			// Registry.Call is the legacy text-only entry point and does not
-			// dispatch ContextDetailedHandler in the released tool module.
-			Handler: func(args map[string]any) (string, error) {
-				result, err := a.caller.CallTool(context.Background(), d.Ref, args)
-				if err != nil {
-					return "", err
-				}
-				adapted, err := mcpToolResult(result)
-				return adapted.Output, err
-			},
+			InputSchema: schema, Category: CatMCP, Source: d.Ref.Server, Permission: PermApprove, RequiresContext: true,
 			ContextDetailedHandler: func(exec ExecutionContext, args map[string]any) (ToolCallResult, error) {
 				result, err := a.caller.CallTool(exec.Context, d.Ref, args)
 				if err != nil {
-					return ToolCallResult{}, err
+					return ToolCallResult{Output: err.Error(), Metadata: map[string]any{"mcp_call_error": err.Error()}}, err
 				}
 				return mcpToolResult(result)
 			},

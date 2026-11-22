@@ -308,14 +308,20 @@ func (m *Manager) CallTool(ctx context.Context, ref ToolRef, args map[string]any
 	}
 	session, cfg := entry.session, entry.config
 	m.mu.RUnlock()
-	ctx, cancel := context.WithTimeout(ctx, timeout(cfg))
+	callTimeout := timeout(cfg)
+	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: ref.Name, Arguments: args})
+	result, err := session.CallTool(callCtx, &mcp.CallToolParams{Name: ref.Name, Arguments: args})
 	if err != nil {
+		// Keep caller cancellation separate from the manager's per-server cap.
+		// The cap used to surface as a generic MCP failure.
 		if ctx.Err() != nil {
-			return CallResult{}, ctx.Err()
+			return CallResult{}, fmt.Errorf("MCP server %q: tool call canceled: %w", ref.Server, ctx.Err())
 		}
-		return CallResult{}, fmt.Errorf("MCP server %q: tool call failed", ref.Server)
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			return CallResult{}, fmt.Errorf("MCP server %q: tool call timed out after %s (client timeout): %w", ref.Server, callTimeout, context.DeadlineExceeded)
+		}
+		return CallResult{}, fmt.Errorf("MCP server %q: tool call failed: %w", ref.Server, err)
 	}
 	raw, err := json.Marshal(result)
 	if err != nil {
