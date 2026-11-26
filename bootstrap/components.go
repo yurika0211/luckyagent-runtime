@@ -46,6 +46,7 @@ type Components struct {
 	CollabRegistry   *collab.Registry
 	CollabManager    *collab.DelegateManager
 	CronStore        *cron.Store
+	CronResults      *cron.ResultStore
 	startOnce        sync.Once
 	closeOnce        sync.Once
 	closeError       error
@@ -168,6 +169,10 @@ func Open(cfg *config.Manager, injected *memory.Runtime) (_ *Components, err err
 	}
 	_ = r.CollabManager.SetMDPSnapshotPath(filepath.Join(cfg.HomeDir(), "planner", "mdp.json"))
 	r.CronStore = cron.NewStore(filepath.Join(cfg.HomeDir(), "memory", "prompts", "mission.md"))
+	r.CronResults, err = cron.NewResultStore(filepath.Join(cfg.HomeDir(), "runtime", "cron_results.json"))
+	if err != nil {
+		return nil, fmt.Errorf("init cron result store: %w", err)
+	}
 	if restored, restoreErr := r.Support.AutonomyKit.EnablePersistence(filepath.Join(cfg.HomeDir(), "runtime", "autonomy_queue.json")); restoreErr != nil {
 		fmt.Printf("[autonomy] restore failed: %v\n", restoreErr)
 	} else if restored > 0 {
