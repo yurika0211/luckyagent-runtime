@@ -68,7 +68,7 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yurika0211/luckyagent-api v0.2.2
 	github.com/yurika0211/luckyagent-gateway v0.2.2
-	github.com/yurika0211/luckyagent-tools v0.2.8-0.20261122165448-9963e4ad0b1e
+	github.com/yurika0211/luckyagent-tools v0.2.8-0.20261126194951-2863b53b7aac
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
