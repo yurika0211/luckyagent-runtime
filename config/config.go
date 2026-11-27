@@ -27,6 +27,9 @@ type Config struct {
 	Extra        map[string]string `json:"extra,omitempty"`
 	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
 
+	// LoadDiagnostics records values changed while loading. It is not persisted.
+	LoadDiagnostics []string `json:"-"`
+
 	// 自定义模型目录
 	CustomModels []CustomModelInfo `json:"custom_models,omitempty"`
 
@@ -475,7 +478,10 @@ type ServerConfig struct {
 	ProgressSummaryPrompt  string   `json:"progress_summary_prompt,omitempty"`   // React/WebSocket 每轮进度摘要展示提示词
 }
 
-// AutonomyWorkerConfig 自主 worker 配置
+// AutonomyWorkerConfig 自主 worker 配置。
+// tool_only_iteration_limit 大于 max_iterations 时夹紧到 max_iterations。
+// timeout_seconds 小于 max_iterations 时夹紧到至少 max_iterations 秒。
+// 两条夹紧都写入 LoadDiagnostics，不静默生效。
 type AutonomyWorkerConfig struct {
 	MaxIterations          int      `json:"max_iterations,omitempty"`
 	TimeoutSeconds         int      `json:"timeout_seconds,omitempty"`
@@ -1252,6 +1258,30 @@ func parseConfigData(data []byte) (*Config, error) {
 	return cfg, nil
 }
 
+// clampAutonomyWorkerLimits keeps a tool-only round from outrunning the task
+// and keeps the timeout long enough for every allowed iteration. Each clamp
+// is recorded on the config so a caller can see that the file value changed.
+func clampAutonomyWorkerLimits(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	worker := &cfg.Autonomy.Worker
+	if worker.MaxIterations > 0 && worker.ToolOnlyIterationLimit > worker.MaxIterations {
+		cfg.LoadDiagnostics = append(cfg.LoadDiagnostics, fmt.Sprintf(
+			"autonomy.worker.tool_only_iteration_limit %d clamped to max_iterations %d",
+			worker.ToolOnlyIterationLimit, worker.MaxIterations,
+		))
+		worker.ToolOnlyIterationLimit = worker.MaxIterations
+	}
+	if worker.MaxIterations > 0 && worker.TimeoutSeconds > 0 && worker.TimeoutSeconds < worker.MaxIterations {
+		cfg.LoadDiagnostics = append(cfg.LoadDiagnostics, fmt.Sprintf(
+			"autonomy.worker.timeout_seconds %d clamped to max_iterations %d",
+			worker.TimeoutSeconds, worker.MaxIterations,
+		))
+		worker.TimeoutSeconds = worker.MaxIterations
+	}
+}
+
 func normalizeConfig(cfg *Config) {
 	applyLegacyComputerUseExtra(cfg)
 	def := DefaultConfig()
@@ -1697,6 +1727,7 @@ func normalizeConfig(cfg *Config) {
 	if cfg.Autonomy.Worker.DuplicateFetchLimit <= 0 {
 		cfg.Autonomy.Worker.DuplicateFetchLimit = def.Autonomy.Worker.DuplicateFetchLimit
 	}
+	clampAutonomyWorkerLimits(cfg)
 	if cfg.Autonomy.Worker.AutoApprove == nil {
 		cfg.Autonomy.Worker.AutoApprove = def.Autonomy.Worker.AutoApprove
 	}
