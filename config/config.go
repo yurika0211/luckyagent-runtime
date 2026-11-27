@@ -345,6 +345,17 @@ type ContextConfig struct {
 	CompactMaxChunkTokens int `json:"compact_max_chunk_tokens,omitempty"`
 	// CompactMaxParallel is the max concurrent chunk-summary LLM calls.
 	CompactMaxParallel int `json:"compact_max_parallel,omitempty"`
+	// Compaction precompute and cache knobs (#531). They used to be readable
+	// only from the raw Extra map in the agent module, so `lh config set` wrote
+	// keys nothing could see and `lh config list` could not show them.
+	// The two bools are pointers: "absent" must fall back to the default while
+	// an explicit false has to survive, and omitempty on a plain bool drops it.
+	CompactBackground            *bool `json:"compact_background,omitempty"`
+	CompactPrecomputeLeadTokens  int   `json:"compact_precompute_lead_tokens,omitempty"`
+	CompactPrecomputeMaxFailures int   `json:"compact_precompute_max_failures,omitempty"`
+	CompactCacheMarginSeconds    int   `json:"compact_cache_margin_seconds,omitempty"`
+	CompactKeepTokens            int   `json:"compact_keep_tokens,omitempty"`
+	CompactChunkFallback         *bool `json:"compact_chunk_fallback,omitempty"`
 	// Session storage hygiene: soft limits trigger in-place roll (same session id).
 	SessionAutoRoll        bool  `json:"session_auto_roll,omitempty"`
 	SessionMaxMessages     int   `json:"session_max_messages,omitempty"`
@@ -1019,6 +1030,12 @@ func DefaultConfig() *Config {
 			CompactModel:                     "",
 			CompactMaxChunkTokens:            12000,
 			CompactMaxParallel:               4,
+			CompactBackground:                boolPtr(true),
+			CompactPrecomputeLeadTokens:      60000,
+			CompactPrecomputeMaxFailures:     2,
+			CompactCacheMarginSeconds:        30,
+			CompactKeepTokens:                15000,
+			CompactChunkFallback:             boolPtr(true),
 			SessionAutoRoll:                  true,
 			SessionMaxMessages:               8000,
 			SessionMaxBytes:                  64 * 1024 * 1024,
@@ -1545,6 +1562,24 @@ func normalizeConfig(cfg *Config) {
 	}
 	if cfg.Context.CompactMaxParallel <= 0 {
 		cfg.Context.CompactMaxParallel = def.Context.CompactMaxParallel
+	}
+	if cfg.Context.CompactBackground == nil {
+		cfg.Context.CompactBackground = boolPtr(*def.Context.CompactBackground)
+	}
+	if cfg.Context.CompactPrecomputeLeadTokens <= 0 {
+		cfg.Context.CompactPrecomputeLeadTokens = def.Context.CompactPrecomputeLeadTokens
+	}
+	if cfg.Context.CompactPrecomputeMaxFailures <= 0 {
+		cfg.Context.CompactPrecomputeMaxFailures = def.Context.CompactPrecomputeMaxFailures
+	}
+	if cfg.Context.CompactCacheMarginSeconds < 0 {
+		cfg.Context.CompactCacheMarginSeconds = def.Context.CompactCacheMarginSeconds
+	}
+	if cfg.Context.CompactKeepTokens <= 0 {
+		cfg.Context.CompactKeepTokens = def.Context.CompactKeepTokens
+	}
+	if cfg.Context.CompactChunkFallback == nil {
+		cfg.Context.CompactChunkFallback = boolPtr(*def.Context.CompactChunkFallback)
 	}
 	if cfg.Context.SessionMaxMessages < 0 {
 		cfg.Context.SessionMaxMessages = def.Context.SessionMaxMessages
@@ -2994,6 +3029,28 @@ func (m *Manager) Set(key, value string) error {
 		var n int
 		fmt.Sscanf(value, "%d", &n)
 		m.config.Context.CompactMaxParallel = n
+	case "context.compact_background":
+		v := parseBool(value)
+		m.config.Context.CompactBackground = &v
+	case "context.compact_precompute_lead_tokens":
+		var n int
+		fmt.Sscanf(value, "%d", &n)
+		m.config.Context.CompactPrecomputeLeadTokens = n
+	case "context.compact_precompute_max_failures":
+		var n int
+		fmt.Sscanf(value, "%d", &n)
+		m.config.Context.CompactPrecomputeMaxFailures = n
+	case "context.compact_cache_margin_seconds":
+		var n int
+		fmt.Sscanf(value, "%d", &n)
+		m.config.Context.CompactCacheMarginSeconds = n
+	case "context.compact_keep_tokens":
+		var n int
+		fmt.Sscanf(value, "%d", &n)
+		m.config.Context.CompactKeepTokens = n
+	case "context.compact_chunk_fallback":
+		v := parseBool(value)
+		m.config.Context.CompactChunkFallback = &v
 	case "context.session_auto_roll":
 		m.config.Context.SessionAutoRoll = parseBool(value)
 	case "context.session_max_messages":
@@ -3070,6 +3127,52 @@ func parseBool(s string) bool {
 
 func boolPtr(v bool) *bool {
 	return &v
+}
+
+// CompactSettings is the resolved compaction precompute/cache configuration.
+// The agent used to assemble this from Config.Extra with hardcoded defaults;
+// it now asks the config for it so `lh config set`/`lh config list` and the
+// compaction path cannot disagree.
+type CompactSettings struct {
+	Background            bool
+	PrecomputeLeadTokens  int
+	PrecomputeMaxFailures int
+	CacheMarginSeconds    int
+	KeepTokens            int
+	ChunkFallback         bool
+}
+
+// CompactSettings resolves the compaction knobs, filling any unset field from
+// the built-in defaults. It is safe on a zero-value ContextConfig.
+func (c ContextConfig) CompactSettings() CompactSettings {
+	def := DefaultConfig().Context
+	out := CompactSettings{
+		Background:            true,
+		PrecomputeLeadTokens:  def.CompactPrecomputeLeadTokens,
+		PrecomputeMaxFailures: def.CompactPrecomputeMaxFailures,
+		CacheMarginSeconds:    def.CompactCacheMarginSeconds,
+		KeepTokens:            def.CompactKeepTokens,
+		ChunkFallback:         true,
+	}
+	if c.CompactBackground != nil {
+		out.Background = *c.CompactBackground
+	}
+	if c.CompactPrecomputeLeadTokens > 0 {
+		out.PrecomputeLeadTokens = c.CompactPrecomputeLeadTokens
+	}
+	if c.CompactPrecomputeMaxFailures > 0 {
+		out.PrecomputeMaxFailures = c.CompactPrecomputeMaxFailures
+	}
+	if c.CompactCacheMarginSeconds > 0 {
+		out.CacheMarginSeconds = c.CompactCacheMarginSeconds
+	}
+	if c.CompactKeepTokens > 0 {
+		out.KeepTokens = c.CompactKeepTokens
+	}
+	if c.CompactChunkFallback != nil {
+		out.ChunkFallback = *c.CompactChunkFallback
+	}
+	return out
 }
 
 func splitCSV(s string) []string {
