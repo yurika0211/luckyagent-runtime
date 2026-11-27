@@ -9,6 +9,43 @@ import (
 	"time"
 )
 
+func TestAutonomyWorkerLimitsClampAndKeepExampleDefaults(t *testing.T) {
+	overTools, err := parseConfigData([]byte(`{"autonomy":{"worker":{"max_iterations":1000,"tool_only_iteration_limit":5000,"timeout_seconds":1000}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overTools.Autonomy.Worker.ToolOnlyIterationLimit != 1000 {
+		t.Fatalf("tool-only limit = %d, want 1000", overTools.Autonomy.Worker.ToolOnlyIterationLimit)
+	}
+	if !strings.Contains(strings.Join(overTools.LoadDiagnostics, "\n"), "tool_only_iteration_limit 5000 clamped to max_iterations 1000") {
+		t.Fatalf("diagnostics = %#v", overTools.LoadDiagnostics)
+	}
+
+	shortTimeout, err := parseConfigData([]byte(`{"autonomy":{"worker":{"max_iterations":1000,"timeout_seconds":30,"tool_only_iteration_limit":1000}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shortTimeout.Autonomy.Worker.TimeoutSeconds != 1000 {
+		t.Fatalf("timeout = %d, want 1000", shortTimeout.Autonomy.Worker.TimeoutSeconds)
+	}
+	if !strings.Contains(strings.Join(shortTimeout.LoadDiagnostics, "\n"), "timeout_seconds 30 clamped to max_iterations 1000") {
+		t.Fatalf("diagnostics = %#v", shortTimeout.LoadDiagnostics)
+	}
+
+	example := []byte(`{"autonomy":{"worker":{"max_iterations":300,"timeout_seconds":300,"repeat_tool_call_limit":300,"tool_only_iteration_limit":300,"duplicate_fetch_limit":300}}}`)
+	loaded, err := parseConfigData(example)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := loaded.Autonomy.Worker
+	if worker.MaxIterations != 300 || worker.TimeoutSeconds != 300 || worker.ToolOnlyIterationLimit != 300 {
+		t.Fatalf("example defaults were rewritten: %+v", worker)
+	}
+	if len(loaded.LoadDiagnostics) != 0 {
+		t.Fatalf("example defaults produced diagnostics: %#v", loaded.LoadDiagnostics)
+	}
+}
+
 func TestNapCatProgressFieldsUnmarshal(t *testing.T) {
 	var cfg Config
 	raw := []byte(`{"msg_gateway":{"napcat":{"progress_summary_with_llm":true,"progress_summary_prompt":"使用简体中文","show_tool_details_in_result":true}}}`)
